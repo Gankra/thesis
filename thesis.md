@@ -9,15 +9,15 @@ These are bold claims. What possible mechanism could enable this? Well, nothing
 on its own is *truly* sufficient to make these claims. Rust largely just steals good
 ideas from wherever it finds them. Piecewise, Rust isn't a particularly novel
 language. This was in fact a specific design goal. Research is hard and slow.
-As a whole, however, Rust has developed an some interesting systems and insights.
+As a whole, however, Rust has developed some interesting systems and insights.
 The most important of these is *ownership*. Rust models data ownership in a
 first-class manner unlike any other language in production today. To our knowledge,
 the only language that comes even close to Rust in this regard is
-[Cyclone][], which is no conincidence. Rust has sourced many great ideas from
+[Cyclone][], which is no coincidence. Rust has sourced many great ideas from
 Cyclone.
 
 However Cyclone was largely trying to be as close as possible to C. As such,
-many aspects of ownership weren't as well intergrated or fleshed out as in Rust,
+many aspects of ownership weren't as well integrated or fleshed out as in Rust,
 as legacy constraints got in the way. Cyclone has also unfortunately been
 officially abandoned, and is no longer maintained or supported. By contrast,
 Rust 1.0 was released last year, and the language has been going strong ever
@@ -35,7 +35,8 @@ it attempts to address.
 Programming is hard. \[citation needed\]
 
 One particularly interesting perspective on this problem is a relatively new
-movement being championed by the game development industry: called *data-oriented programming* (not to be mistaken with data-driven programming). Data-oriented programming fundamentally
+movement being championed by the game development industry: *data-oriented programming*
+(not to be mistaken with data-driven programming). Data-oriented programming fundamentally
 argues that programming isn't about code, but is rather about manipulating data.
 The first step to writing a good program is not to design the code architecture,
 but rather to understand the data you will be working with. Data-oriented
@@ -45,7 +46,7 @@ exact problem at hand using using the specific properties of the data.
 Consider a simple and well-studied problem: sorting. Without
 understanding the data we're sorting, it's unlikely we will select the best solution. The
 performance and applicability of different sorting algorithms depends heavily
-on the distribution of the data. If you refuse to acknowledge any properties of
+on the distribution and type of the data. If you refuse to acknowledge any properties of
 the data, you could reasonably settle on quick-sort, whose design explicitly
 ignores any pre-existing properties.
 
