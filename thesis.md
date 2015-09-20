@@ -56,14 +56,14 @@ data sets. Radix or bucket sort can be applied if we're sorting integers.
 The cost of moving or comparing the data may also change which algorithm we
 favour. In addition, most of these algorithms can be tweaked to optimize for
 certain other properties of the data. For instance, much ink has been spilled
-over how to best select a pivot for quicksort. [pivot-selection][] If you know
+over how to best [select a pivot for quicksort][pivot-selection]. If you know
 your data is truly random, you may as well select the first element unconditionally.
 
 Some sorting algorithms try to detect these properties and change their
 strategy on-the-fly, but this comes at the cost of increased complexity and
 overhead compared to simply picking the right sorting algorithm *for our data*.
 This strategy has also historically lead to mysterious performance cliffs, as some
-inputs can trick the heuristics into picking the wrong algorithm. [sort-cliff][]
+inputs can trick the heuristics into [picking the wrong algorithm][sort-cliff].
 
 This thesis is particularly interested in another aspect of data-oriented
 programming: *trusting* the data. It's one thing to understand our data has
