@@ -1,3 +1,10 @@
+# Titles
+
+* You Can't Spell Trust Without Rust
+* Shared Mutability Kills Freedom and Leads to Communism
+* Designing APIs for Data-Trust
+
+
 # Introduction
 
 Rust is a new programming language with ambitious goals: in principle, Rust
@@ -821,9 +828,9 @@ fn find_with_or_insert_with<A, F, NF>(&mut self, k: K, a: A, found: F, not_found
 to execute if the key didn't exist. But because of this design, we end up with this curious
 `A` type mixed in. What is the purpose of this value? Well, normally if you wanted a
 function to use some local data, you would use a closure. Unfortunately, two closures can't
-in general close over the same value, because the value may be affine. In this case, we know
-only one of the closures will be executed, so it would be sound. In order to encode this,
-we have the user manually pass in the closed state.
+close over the same value if it's affine. In this case, we know only one of the closures
+will be executed, so we can soundly close over the same piece of data twice. In order
+to encode this, we have the user manually pass in the state to be closed over.
 
 What a nightmare!
 
@@ -841,11 +848,13 @@ TODO: Entry API
 
 TODO: BTree Closure trick "inverse escape analysis"
 
-TODO: talk about necessity of abstractions for safety
-
+=
 
 
 # jdjjdjjdjdjjdjjdjjdjdjdjdjdd
+
+
+
 
 
 
