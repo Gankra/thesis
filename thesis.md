@@ -143,57 +143,71 @@ that safer languages *without* it are simply irrelevant.
 
 At the other extreme of the spectrum we find paranoia. Paranoid designs
 represent a distrust so deep that things must be taken away so as to eliminate
-the problem *a priori*. In practice, paranoia is primarily practiced at
-compile-time, but is not necessarily so. It also represents several incredibly
-well-accepted techniques, as well as various fringe techniques.
+the problem *a priori*. There are two major families of paranoid practices:
+omissions and static checking.
 
-The two champions of this perspective are static typing and garbage collection.
-Static typing declares that a program must prove that it doesn't just execute
-random instructions on random bits in order to be allowed to run. Garbage collection,
-on the other hand, restricts the programmer's ability to manage memory. Both of
-these techniques are paranoid because they eliminate certain classes of error
-by simply taking things away from the programmer.
+Omissions represent pieces of functionality that could have been provided or
+used, but were deemed too error-prone. The much-maligned `goto` is perhaps
+the most obvious instance of a paranoid omission, but it's not the most
+interesting. The most interesting omission is the ability to manually free memory
+which all garbage collected languages effectively reject. Some less popular
+examples include always-nullable pointers (Haskell, Swift?, Rust),
+concurrency (JavaScript), and side-effects (pure functional programming).
+
+Static checking consists of verifying a program has certain properties at
+compile-time. Static typing is the most well-accepted of these practices,
+requiring every piece of data in the program to have a statically known type.
+Various static lints for dubious behaviours fall into this category, including lints
+for code style. Static paranoia also includes more exotic systems like
+dependent-typing, which expresses requirements on runtime values (such as `x < y`)
+at the type level.
 
 The primary benefit of paranoid practices is maximum safety. Ideally, a paranoid
 solution doesn't just handle a problem, it *eliminates* that problem. For instance,
-garbage collection completely eliminates dangling pointers. The very existence of a
-pointer guarantees that its referent is allocated. This is of course assuming
-several other restrictions to the programming environment that we will not dwell on,
-but it's worth noting that having a garbage collector is not sufficient to make
-such a guarantee.
+taking away memory freeing completely eliminates the use-after-free, because there
+is no after free (garbage collection being "only" an optimization). Similarly, a
+lack of concurrency eliminates race conditions, because it's impossible to race.
+Lints may completely eliminate specific mistakes, or simply reduce their
+probability by catching common or obvious instances. Dependent typing can
+prove that an index is in bounds, eliminating the need to check.
 
 The cost of this safety is control. Paranoid practices point to the pervasive
-problems that giving a programmer control leads to, and simply declare that this
+problems that control leads to, and declare that this
 is why we can't have nice things. It's worth noting that this loss of control
 does not necessarily imply a loss in performance. In fact, quite the opposite
 can be true: an optimizing compiler can use the fact that certain things are
 impossible to produce more efficient programs. However paranoid practices do
 generally take away a programmer's ability to directly construct an optimized
-implementation. Rather one must carefully craft their program so that it
-happens to be optimized in the desired manner.
+implementation. Instead one must carefully craft their program so that it
+happens to be optimized in the desired manner. In some cases this may be
+impossible.
 
-The ergonomic impact of paranoid practices is tricky subject. For the most part,
+The ergonomic impact of paranoid practices is a tricky subject. For the most part,
 paranoid practices err on the side of producing false negatives. Better to
-eliminate some good programs than allow bad programs to exist. This suggests
-a loss of ergonomics in some cases. Static analyses in particular can prevent one
-from temporarily making aspects of the program incorrect while exploring unrelated
-aspects. On the other hand, paranoia can be liberating. Not having to worry about
-certain classes of error means the programmer can be reckless in their exploration
-of the program-space. In extreme cases, getting the program to compile at all is
-a proof that a correct solution has been found. Garbage collection in particular
-is frequently praised for its ergonomic benefits. Embracing paranoia is liberating
-precisely because it means not having to worry about the problem anymore. If you
-collect your own rainwater, who cares what's being put in the water supply?
+eliminate some good programs than allow bad programs to exist! This can lead to
+frustration if one wishes to produce a program they believe to be a false
+negative.
 
-Garbage collection is the greatest success story in the history of paranoid
-practices. It completely dominates the modern programming landscape, with C and
-C++ as the only really notable defectors. Most other paranoid practices
-live in a contentious state. The merit of static typing is hotly debated, and
-it has been rejected by many popular languages such as JavaScript, Python, Ruby,
-and PHP. Like any really good piece of paranoia, many look upon it and see
-something baseless or perhaps simply not worth the pain. Fringe paranoias like
-dependent typing face an even greater uphill battle, and may never see serious
-mainstream usage.
+Omissions are generally much more well-accepted in this regard, particularly
+when an alternative is provided that handles common cases. The
+absence of manual free is quite popular because freeing memory is purely annoying
+book-keeping. Freeing memory has no inherent semantic value, it's just necessary
+to avoid exhausting system resources. The fact that garbage collection just
+magically frees memory for you is pretty popular, as evidenced by its dominance
+of the programming language landscape (C and C++ being notable defectors).
+However some omissions can be too large to bear. Few systems are designed in
+a pure-functional manner.
+
+Static checking, on the other hand, is much more maligned. It's easy to forgive
+an omission, particularly if one isn't even aware that an omission occurred (how many
+programmers are even aware of goto these days?). Static checks on the other hand
+are active and in the programmer's face. They may continuously nag the programmer
+to do a better job, or even prevent the program from building altogether. Static
+typing, one of the less controversial strategies, is rejected by many popular
+languages (JavaScript, Python, Ruby). Dependent types struggle to find any
+mainstream usage at all. These practices can also harm the ability to continuously
+transform a program, forcing the programmer to prove that everything is correct
+before allowing any code to run at all.
 
 
 
@@ -208,12 +222,14 @@ TODO, rewrite all the below stuff.
 
 * checked indexing
 * sanitization?
+* runtime type checking?
 * iterator invalidation
 * get ergonomics of trusting programs
 * get some basic level of safety
 * incorrect programs can still be created, crashes happen
 * lose some aspects of control
 * worst-in-class performance
+
 
 (should be much shorter than before)
 
