@@ -41,87 +41,186 @@ it attempts to address.
 
 Programming is hard. \[citation needed\]
 
-One particularly interesting perspective on this problem is a relatively new
-movement being championed by the game development industry: *data-oriented programming*
-(not to be mistaken with data-driven programming). Data-oriented programming fundamentally
-argues that programming isn't about code, but is rather about manipulating data.
-The first step to writing a good program is not to design the code architecture,
-but rather to understand the data you will be working with. Data-oriented
-programs should not solve generic abstract problems, but rather solve the
-exact problem at hand using using the specific properties of the data.
+We focus on one particularly interesting aspect of programming: trusting data.
+All programs require or expect data to have certain properties. This trust
+is pervasive and extends from raw program inputs to temporaries. Although it
+may not seem to be the case at first, many of our problems boil down to trust.
+This trust has many aspects:
 
-Consider a simple and well-studied problem: sorting. Without
-understanding the data we're sorting, it's unlikely we will select the best solution. The
-performance and applicability of different sorting algorithms depends heavily
-on the distribution and type of the data. If you refuse to acknowledge any properties of
-the data, you could reasonably settle on quick-sort, whose design explicitly
-ignores any pre-existing properties.
+First, there is the *property* of the data that is trusted. The simplest form of
+trust is trusting that certain values don't occur. One can usually safely assume
+a boolean does not ever contain the value `FileNotFound`. A more complex form of
+trust is trusting that separate pieces of data agree. We expect array indices to be in
+bounds, caches to be consistent with cached data, and dereferenced pointers to
+point to allocated memory. Trust may also have a probabilistic nature. One may expect that
+inputs are usually small or mostly duplicates.
 
-However by understanding the data, we can potentially select a better sorting
-algorithm. Insertion sort will outstrip quicksort on small or almost-sorted
-data sets. Radix or bucket sort can be applied if we're sorting integers.
-The cost of moving or comparing the data may also change which algorithm we
-favour. In addition, most of these algorithms can be tweaked to optimize for
-certain other properties of the data. For instance, much ink has been spilled
-over how to best [select a pivot for quicksort][pivot-selection]. If you know
-your data is truly random, you may as well select the first element unconditionally.
+Second, there is the *justification* of the trust. At one extreme, one may simply
+*blindly* trust data. Indexing may be unchecked, and strings may be assumed to be
+escaped. At the other extreme, one can *validate* or *correct* data at runtime.
+Indexing may be checked, and strings may be unconditionally escaped.
+Somewhere in-between these two extremes, one may choose to validate data through
+static analysis or by design. Type checking ensures that booleans are not FileNotFound,
+and normalized databases ensure that there is a single source of truth for each
+fact. Of course, it is also possible to *accidentally* trust data by making
+mistakes or misunderstanding the data. For instance, one may accidentally be
+relying on strings to be ASCII by normalizing them with naive case-folding.
 
-Some sorting algorithms try to detect these properties and change their
-strategy on-the-fly, but this comes at the cost of increased complexity and
-overhead compared to simply picking the right sorting algorithm *for our data*.
-This strategy has also historically lead to mysterious performance cliffs, as some
-inputs can trick the heuristics into [picking the wrong algorithm][sort-cliff].
+Note: this next one is iffy -- it's kind've coupled with 2 and 4. Also, focuses on
+*code* trust more?
 
-This thesis is particularly interested in another aspect of data-oriented
-programming: *trusting* the data. It's one thing to understand our data has
-certain properties, it's another to actually *trust* the data to have these
-properties. Trust takes many forms, and can have far-reaching consequences.
+Third, there is the *who* to trust (scope of trust?). We generally trust our
+hardware and languages to do exactly what they are told to do. When calling out
+to a particular subroutine, it may also be reasonable to trust that subroutine
+to be well-behaved. However when involving arbitrary third parties, one must
+seriously consider whether to trust them. At a base level, a function must
+decide whether to trust its caller. In generic contexts (such as when working
+with interfaces or closures), one must also decide whether they trust the
+generic code that they invoke. For instance, does one trust a comparison function
+to be total, or even consistent?
 
-For instance, we may have experimentally determined that our data has a certain
-distribution and can therefore best be sorted in some particular manner, but
-how will our program behave if this assumption doesn't hold? Will we
-perform slightly worse, produce incorrect output, crash, or have a security
-hole?
+Fourth and finally, there is the *consequences* of the trust; what happens if trust
+is violated? If trust is violated an application could perform slightly worse,
+produce nonsensical output, crash, or compromise the system it's running on.
+The consequences of an assumption can easily shape whether that assumption is
+made at all. Certainly, leaving the system vulnerable is not something to be
+taken lightly.
 
-We argue that data trust is a fundamental issue that can completely change how
-one chooses to approach programming problems. Data-oriented programming argues
-that we should understand our data, but it's trust that determines how we
-actually on our understanding. In fact, we can organize programming languages
-in terms of their approach to data trust.
+We consider three major approaches to trust in the programming landscape:
+trusting, suspicious, and paranoid.
+No language uses just one strategy. Rather, most rely on a hybrid to balance
+ergonomics, control, and safety. However many languages clearly favour some
+approaches over others.
 
 
 
-## Trusting Languages
 
-At one extreme, we have languages which generally unconditionally trust data,
-and do little to justify this trust. The stars of this approach are C and C++.
-These languages often expect data to have many non-trivial properties, and simply
-declare that if those properties *don't* hold, the program is *undefined*.
-Breaking the trust of these languages has dire consequences; the compiler is
-free to misoptimize the program in arbitrary ways, leading to memory corruption
-bugs and high severity vulnerabilities.
+## Blind Trust
+
+At one extreme, we have unconditional trust with little justification.
+This strategy has significant benefits. First and foremost, a trusting interface
+is simply the easiest to *implement*. The implementor doesn't need to concern
+themselves with corner cases because they are simply assumed to not occur. This
+in turn give significant control to the user of the interface. The user doesn't
+need to worry about the interface checking or mangling inputs. It's up
+to them to figure out how correct usage is ensured. Trusting interfaces are also,
+in principle, ergonomic to work with. In particular one is allowed to try to use
+the interface in whatever manner they please. This enables programs to be
+transformed in a more continuous manner. Intermediate designs may be incorrect
+in various ways, but if one is only interested in exploring a certain aspect
+of the program that doesn't depend on the incorrect parts, they are free to do so.
+
+Blind trust can be found in relatively small and local details like unchecked
+indexing as well as massive and pervasive ones like manual memory management.
+
+The uncontested champion of this approach is C. In particular, its notion of
+*Undefined Behaviour* is exactly blind trust. C programs are expected to uphold
+several non-trivial properties, and the C standard simply declares that if those
+properties *don't* hold, the program is *undefined*. But here we see the
+significant drawback of trusting interfaces. Breaking C's trust in this way has
+dire consequences; the compiler is free to misoptimize the program in arbitrary
+ways, leading to memory corruption bugs and high severity vulnerabilities.
 
 This is far from an academic concern:
-exploits deriving from C(++)'s pervasive unsafety [are bountiful][c-exploits].
+exploits deriving from C's pervasive unsafety [are bountiful][c-exploits].
 Modern compilers try to give a helping hand with debug assertions and static
 analysis, but blind trust is evidently too deeply ingrained into these languages.
 Programs written in these languages continue to be exploited, and no end to
 this is in sight.
 
-However in exchange for this great danger, these languages can produce highly
-optimized programs, and give the programmer significant control. Trust can be
-found in relatively small and local details like unchecked indexing as well as
-massive and pervasive ones like manual memory management. These benefits are so
-high-value that many programmers and problem-domains flat out refuse to even
-consider a language without them. Manual memory management in particular is
-regarded as sacrosanct by proponents of these languages. A new and safer language
-that takes manual memory management away is simply irrelevant.
+The control that C's trusting design provides is highly coveted by many programmers.
+Operating systems, web browsers, game engines, and other widely used pieces of
+software continue to be primarily developed in C(++) because of the perceived
+benefits of this control. Performance is perhaps the most well-understood benefit
+of control, but it can also be necessary for correctness in the case of hardware
+interfaces. This control is sufficiently important to many developers to the extent
+that safer languages *without* it are simply irrelevant.
 
 
 
 
+## Paranoia
 
-## Suspicious Languages
+At the other extreme of the spectrum we find paranoia. Paranoid designs
+represent a distrust so deep that things must be taken away so as to eliminate
+the problem *a priori*. In practice, paranoia is primarily practiced at
+compile-time, but is not necessarily so. It also represents several incredibly
+well-accepted techniques, as well as various fringe techniques.
+
+The two champions of this perspective are static typing and garbage collection.
+Static typing declares that a program must prove that it doesn't just execute
+random instructions on random bits in order to be allowed to run. Garbage collection,
+on the other hand, restricts the programmer's ability to manage memory. Both of
+these techniques are paranoid because they eliminate certain classes of error
+by simply taking things away from the programmer.
+
+The primary benefit of paranoid practices is maximum safety. Ideally, a paranoid
+solution doesn't just handle a problem, it *eliminates* that problem. For instance,
+garbage collection completely eliminates dangling pointers. The very existence of a
+pointer guarantees that its referent is allocated. This is of course assuming
+several other restrictions to the programming environment that we will not dwell on,
+but it's worth noting that having a garbage collector is not sufficient to make
+such a guarantee.
+
+The cost of this safety is control. Paranoid practices point to the pervasive
+problems that giving a programmer control leads to, and simply declare that this
+is why we can't have nice things. It's worth noting that this loss of control
+does not necessarily imply a loss in performance. In fact, quite the opposite
+can be true: an optimizing compiler can use the fact that certain things are
+impossible to produce more efficient programs. However paranoid practices do
+generally take away a programmer's ability to directly construct an optimized
+implementation. Rather one must carefully craft their program so that it
+happens to be optimized in the desired manner.
+
+The ergonomic impact of paranoid practices is tricky subject. For the most part,
+paranoid practices err on the side of producing false negatives. Better to
+eliminate some good programs than allow bad programs to exist. This suggests
+a loss of ergonomics in some cases. Static analyses in particular can prevent one
+from temporarily making aspects of the program incorrect while exploring unrelated
+aspects. On the other hand, paranoia can be liberating. Not having to worry about
+certain classes of error means the programmer can be reckless in their exploration
+of the program-space. In extreme cases, getting the program to compile at all is
+a proof that a correct solution has been found. Garbage collection in particular
+is frequently praised for its ergonomic benefits. Embracing paranoia is liberating
+precisely because it means not having to worry about the problem anymore. If you
+collect your own rainwater, who cares what's being put in the water supply?
+
+Garbage collection is the greatest success story in the history of paranoid
+practices. It completely dominates the modern programming landscape, with C and
+C++ as the only really notable defectors. Most other paranoid practices
+live in a contentious state. The merit of static typing is hotly debated, and
+it has been rejected by many popular languages such as JavaScript, Python, Ruby,
+and PHP. Like any really good piece of paranoia, many look upon it and see
+something baseless or perhaps simply not worth the pain. Fringe paranoias like
+dependent typing face an even greater uphill battle, and may never see serious
+mainstream usage.
+
+
+
+
+## Suspicion
+
+Finally we have the position of compromise: the suspicious practices. A suspicious
+design often looks and acts a lot like a trusting design, but with one caveat: it
+actually checks.
+
+TODO, rewrite all the below stuff.
+
+* checked indexing
+* sanitization?
+* iterator invalidation
+* get ergonomics of trusting programs
+* get some basic level of safety
+* incorrect programs can still be created, crashes happen
+* lose some aspects of control
+* worst-in-class performance
+
+(should be much shorter than before)
+
+
+
+
+## Suspicious (old)
 
 In the middle we have languages which will let
 you *try* to do just about anything and strive to make it work, but largely
@@ -247,56 +346,7 @@ for program correctness.
 
 
 
-## Paranoid Languages
 
-At the other extreme of the spectrum, we find the exotica of languages which
-are truly paranoid about their data. In particular, these languages try to
-minimize or isolate mutation and other side-effects which may invalidate their
-data. Haskell is perhaps the poster-child for this approach, and is joined in
-varying degrees by Prolog, Erlang, and tons of other languages.
-
-In contrast to the suspicious languages, the paranoid languages are typified
-by expecting programs to be expressed in a fundamentally different
-manner, and a greater loss of programmer control. It could be argued that this
-is for the best, and that these approaches are simply superior. However we are
-unaware of any significant proof of this, and even if proof *did* exist it would
-be immaterial to us.
-
-Simply declaring that everyone else is incorrect isn't an excellent strategy for
-adoption. Operating systems, web browsers, core libraries, and most applications
-certainly aren't written in a pure-functional manner. In the jump to
-paranoid languages we evidently lose an even larger chunk of the programming
-populace.
-
-In exchange, several of the problems that the suspicious languages suffer
-from are eradicated. Indeed, many of those problems arose from being able to
-mutate data. View invalidation and data races are *defined* in terms of mutation!
-Being able to mutate and reuse state is also a necessary pre-condition to
-recreating several of the classic C bugs in a garbage-collected context. No
-longer can you create an array of reusable pre-allocated objects, because the
-very act of allocating them fixes their representation.
-
-It's worth noting that these strong restrictions *can* enable interesting
-optimizations that wouldn't normally be viable. Because the programmer has so
-little control, the compiler can trust all the data much more, and transform the
-program much more aggressively. Perhaps the most well known of these optimizations
-is Haskell's [list fusion][], which completely eliminates intermediate lists
-based on observations like purity.
-
-Indeed, an optimizing compiler is generally transforming
-the program to either leverage the knowledge it has about data, or to acquire
-more knowledge. Constant folding, branch elimination, alias analysis, and escape
-analysis all boil down to proving facts about data at a certain point in a program.
-Inlining, by contrast, is often most valuable for its ability to give the
-inlined code more information about the data it is being given.
-
-Trusting languages can also be aggressively optimized because they blindly trust
-data to have properties. Suspicious languages therefore in some sense occupy
-an unfortunate middle-ground in terms of compiler optimizations. They can't
-blindly trust data, but they also don't have a lot of information about that
-data either. Just-in-time compilers can recover from this by observing the
-program as it executes and optimizing based on actual usage. However a lack
-of data trust ultimately requires these optimizers to be pessimistic.
 
 
 
