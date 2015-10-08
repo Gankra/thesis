@@ -209,6 +209,12 @@ mainstream usage at all. These practices can also harm the ability to continuous
 transform a program, forcing the programmer to prove that everything is correct
 before allowing any code to run at all.
 
+However in all cases, embracing paranoia can be liberating. Once a paranoid
+practice is in place, one never needs to worry about the problems it addresses
+again. If one collects their own rainwater, who cares what's being put in the
+water supply?
+
+
 
 
 
