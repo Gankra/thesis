@@ -98,12 +98,15 @@ approaches over others.
 ## Blind Trust
 
 At one extreme, we have unconditional trust with little justification.
-This strategy has significant benefits. First and foremost, a trusting interface
+
+First and foremost, a trusting interface
 is simply the easiest to *implement*. The implementor doesn't need to concern
 themselves with corner cases because they are simply assumed to not occur. This
 in turn give significant control to the user of the interface. The user doesn't
 need to worry about the interface checking or mangling inputs. It's up
-to them to figure out how correct usage is ensured. Trusting interfaces are also,
+to them to figure out how correct usage is ensured.
+
+Trusting interfaces are also,
 in principle, ergonomic to work with. In particular one is allowed to try to use
 the interface in whatever manner they please. This enables programs to be
 transformed in a more continuous manner. Intermediate designs may be incorrect
@@ -222,148 +225,50 @@ water supply?
 
 Finally we have the position of compromise: the suspicious practices. A suspicious
 design often looks and acts a lot like a trusting design, but with one caveat: it
-actually checks.
+actually checks at runtime. The suspicious stance is that some baseline level of
+safety is important, but categorically eliminating an error with a paranoid practice
+is impractical. Suspicious practices can skew to be implicit or explicit, in an
+attempt to fine-tune the tradeoffs.
 
-TODO, rewrite all the below stuff.
+In languages where pointers are nullable by default, it's common for all dereferences
+to silently and implicitly check for `null`. This may cause the program to completely
+crash or trigger unwinding (an exception in many languages). This allows the programmer
+to write the program in a trusting way without worrying about the associated danger.
 
-* checked indexing
-* sanitization?
-* runtime type checking?
-* iterator invalidation
-* get ergonomics of trusting programs
-* get some basic level of safety
-* incorrect programs can still be created, crashes happen
-* lose some aspects of control
-* worst-in-class performance
+Other interfaces may require the author to explicitly acknowledge invalid cases.
+For instance, an API may only provide access to its data through callbacks which it
+invokes when the data is specifically correct or incorrect. This approach is often
+more general, as it can be wrapped to provide the implicit form. Requiring
+errors to be handled gives more control to the user and can improve the
+clarity of code by reducing implicit control-flow. But this comes at
+a significant ergonomic cost; imagine if every pointer dereference in Java
+required an error callback!
 
+Regardless of the approach, suspicious practices are a decent compromise. For
+many problems the suspicious solution is much easier to implement, work with,
+and understand than the paranoid solution. Array indexing is perhaps the best
+example of this. It's incredibly simple to have array indexing unconditionally
+check the input against the length of the array. Meanwhile, the paranoid
+solution to this problem requires an integer theorem solver and may require
+significant programmer annotations for complex access patterns. That said,
+paranoid solutions can also be simpler. Why check every dereference for
+null, when one can simply not let pointers be null in the first place?
 
-(should be much shorter than before)
+One significant drawback of suspicious practices, particularly of the implicit
+variety, is that they do little for actual program *correctness*. They make sure
+that the program doesn't do arbitrary unpredictable with bad data, usually by
+reliably crashing the program. This can be great for reproducing and fixing bugs,
+but a crash is still a crash to the end user. This can be especially problematic
+for critical systems, where a crash is essentially a critical vulnerability.
 
-
-
-
-## Suspicious (old)
-
-In the middle we have languages which will let
-you *try* to do just about anything and strive to make it work, but largely
-don't trust the data at runtime. This perspective is championed by the vast
-majority of production languages: Java, Python, Ruby, Javascript, PHP, C#,
-and many more.
-
-These languages generally favour attempting to validate their data,
-instead of trusting it. For instance it's common to silently check all array
-indexing operations, and just crash the program if the check fails.
-
-However the most interesting aspect of suspicion is the use of pervasive
-garbage collection instead of manual memory management.
-Garbage collection guarantees that data is always allocated as long as it's
-reachable, enabling programs to blindly trust this property at the cost of
-letting them control it.
-
-Still, these languages generally let you write programs that are structured much
-like a C(++) program at the high level. They just don't let you control
-the low-level details as much, and will attempt to check assumptions where
-possible. Of course, for some this *is* a fundamental change to the
-way programs are written.
-
-In exchange for this loss of control, these languages render entire classes of bugs
-obscure. Garbage collection in particular completely eliminates the
-use-after-frees, double-frees, and dangling pointers of trusting languages.
-Runtime checks prevent buffer overruns, null pointer dereferencing, stack overflows, and other
-miscellaneous safety issues. Although "prevent" here usually just means *definitely
-crashes the program*, rather than *does anything at all*.
-
-The biggest focus of these mechanisms is a group of problems that is generally
-referred to as *memory safety*. Memory safety is honestly a bit of a vague concept,
-but it largely boils down to accessing data that wasn't supposed to be accessed,
-or otherwise isn't the data you expected. The vast majority of C(++) exploits
-are generally memory-safety ones, so eliminating these bugs is a serious win.
-
-This trades programmer control for some basic guarantees and peace-of-mind. For
-some applications, the loss of control may have little to no impact. Especially if
-the optimizer can actually prove that they are unnecessary through the wonders
-of constant propagation and escape analysis. However for other applications the
-impact may be a catastrophic orders-of-magnitude loss in performance. In
-addition, these languages are still simply a non-starter for those that demand the
-control of trusting languages.
-
-Even though these languages generally eliminate the largest source of program
-vulnerabilities, many major pieces of software continue to be written in C(++)
-for these reasons. Kernels, browsers, and major libraries like GTK, Qt, and
-OpenSSL all continue to be developed in C(++) in spite of languages like Java
-and Python having existed for decades. This is no accident. C(++) is regarded
-as the best language for the job, and users of these pieces
-of software (literally everyone with a computer or phone) continue to be
-exploited as a result.
-
-However it should be noted that suspicious languages are not a panacea. Programs written
-in these safer languages still suffer from serious security vulnerabilities, and other
-pernicious bugs.
-
-First and foremost, some bugs are simply a matter of bad policy, which can never
-truly be prevented. If you forgot to sanitize some input, mess up some
-cryptographic operation, or just validate data incorrectly, there's little that
-can be done. These mistakes can be fought against by encoding policy
-requirements at the type level, but someone still has to correctly develop a
-bullet-proof encoding of requirements into types, and everyone else has to produce
-programs that use the *right* types. Although this is an interesting problem,
-and we have found that Rust can be *helpful* with it, we do not attempt to address
-it in this work.
-
-Second, all of the bugs of C can be recreated by a sufficiently
-bad design. If you decide to reinvent the allocator with a big array of pre-allocated
-objects with indices for pointers, there's little that a suspicious language can do to
-protect you from performing the equivalent of a use-after-free on the elements in
-this array.
-
-Third and finally, while crashing the program because you did something bad is in some sense
-*better* than getting exploited, it's not exactly *great*. Your program is still
-wrong, users are getting random crashes, and you still need to waste tons of
-time figuring out what happened. Ideally, these bugs would be caught
-and prevented *before* the program was actually executed. Just about
-any problem you can think of can be prevented statically. It just
-involves forbidding some perfectly sound programs. Even the halting problem can
-be solved if you just disallow every program that your analysis fails on.
-The big question is how much of a burden it is to eliminate these bugs.
-
-Some bugs are especially resilient to elimination. Indexing out of bounds is perhaps
-the most notable example. It *is* possible to statically guarantee that all indexing
-operations are in-bounds, but the necessary machinery is quite heavy-weight.
-The resulting programs will likely need a significant amount of annotation and
-massaging.
-
-Other problems, on the other hand, can be more readily eliminated. Of particular
-interest to us is the problem of *view invalidation*. The abstract
-problem is simple: when one piece of code is viewing some state that another
-piece of code is mutating, the view may become corrupted, causing incorrect
-behaviour.
-
-A classic example of this problem is *iterator invalidation*: mutating a data
-structure while iterating it. Java's standard collections all explicitly check
-for this at runtime, and will throw a ConcurrentModificationException if it
-is detected. C++, by contrast, just states that this is Undefined
-Behaviour.
-
-Certain data structures and iteration approaches are more or less resilient to
-iterator invalidation issues. For instance, if you iterate a growable array
-by holding a pointer into it, a reallocation may leave your pointer dangling
-or pointing at stale data. If you instead hold an index, then you may not notice
-a reallocation.
-
-Binary trees can often be safely mutated during
-iteration if they have parent pointers, in which case the iterator can just hold
-a pointer to a node, which is stable unless that node's element is removed. However
-without parent pointers the iterator must maintain an *array* of parent node
-pointers which becomes inconsistent if the path to the current node
-changes.
-
-View invalidation is especially nasty in a threaded context, where it becomes
-difficult to debug or even reproduce. Worse, in a threaded context we are
-introduced to a particularly degenerate form of view invalidation: data races.
-Data races occur when one thread tries to read a location in memory while another
-writes to it without appropriate synchronization. What the reader sees at that
-point is completely up in the air. Needless to say, data races aren't great
-for program correctness.
+Suspicious solutions also often have the worst-in-class performance properties
+of the three solutions. Trusting solutions let the programmer do whatever they
+please while still aggressively optimizing. Paranoid solutions in turn give the
+compiler and programmer alike rich information to optimize the program with
+soundly. However a suspicious solution gets to assume little, and must bloat up
+the program with runtime checks which further inhibit other optimizations.
+That said, a good optimizing compiler can completely eliminate this gap. Bounds
+checks in particular can be completely eliminated in common cases.
 
 
 
@@ -376,21 +281,23 @@ for program correctness.
 
 # Ownership
 
-Rust tries to be a practical language. It understands that each of the
-above groups has good ideas and problems. Rust is greedy though, so it only
-wants the good ideas with none of the associated problems. From each category,
-it takes one major insight, but it doesn't take their solutions.
+Rust tries to be a practical language. It understands that each perspective has
+advantages and drawbacks, and tries to pick the best tool for each job. From each
+perspective, Rust takes one key insight. From the blind-trust perspective we embrace
+that control is incredibly important. Rust wants to be used in all the places where
+C and C++ are used today, and being able to manually manage memory is a critical
+aspect of that. From the paranoid perspective we embrace that completely
+eliminating errors is great. Humans are fallible and get tired, but a good compiler
+never rests and always has our back. From the suspicious perspective, we embrace
+that compromises must be made for ergonomics and safety.
 
-From the trusting languages, Rust takes the idea that low-level control is important.
-From the suspicious languages, Rust takes the idea that memory safety is important.
-From the paranoid languages, Rust takes the idea that pervasive mutation causes problems.
-However Rust does not embrace garbage collection as the solution to memory safety,
-nor does it embrace that minimizing *all* mutation is the solution to other problems.
-
-Instead, Rust solves all these problems with ownership. The ownership model has
-two major aspects: controlling where and when data lives; and controlling
-where and when mutation can occur. These aspects are governed by two major
-features: affine types and regions.
+Part of Rust's solution is then simply taking our favourite solutions for
+each specific problem: static types, runtime bounds checks, no nulls, wrapping
+arithmetic, and so on. However Rust has one very large holistic solution to
+many problems, and it's what seperates it from most other languages: ownership.
+The ownership model has two major aspects: controlling where and when data lives;
+and controlling where and when mutation can occur. These aspects are governed by
+two major features: affine types and regions.
 
 
 
@@ -400,22 +307,51 @@ features: affine types and regions.
 
 At a base level, Rust manages data ownership with an *affine type system*. The
 literature often describes affine types as being usable *at most once*, but from
-Rust's perspective affine typing primarily means values are *uniquely owned* by default.
-That is, if a variable stores a Map type, passing it to a function by-value or
-assigning it to another variable transfers ownership of the value to the new location.
-The new location now can *trust* that it has unique access to the Map, and the
-old location loses all access to the Map. When this occurs, the value is said to
-be *moved*.
+Rust's perspective affine typing primarily means values are *uniquely owned*.
 
-The owner of a Map in turn knows that it can safely do whatever
-it pleases with the value without interfering with someone else. The greatest of these
-rights is destruction: when a variable goes out of scope, it destroys its value forever.
-This can mean simply forgetting the value, or executing the type's destructor.
-In the case of a Map, this would presumably be freeing its allocations.
+If a variable stores a collection, passing it to a function by-value or
+assigning it to another variable transfers ownership of the value to the new
+location. The new location gains access to the value, and the old location loses
+access. Whoever owns the value knows that it is the only location
+in existence that can possibly talk about the contents of the collection.
+This allows the owner of the collection to soundly *trust* the
+collection. Any properties it observes and wishes to rely on will not be changed
+by some other piece of code without its permission. Perhaps more importantly,
+the owner of the collection knows that it can due whatever it pleases with the
+collection without interfering with anyone else.
+
+A simple example:
+
+```rust
+fn main() {
+    // A growable array
+    let data = Vec::new();
+
+    // transfer ownership of `data` to `data2`
+    let data2 = data;
+    // `data` is now statically inaccessible, and logically uninitialized
+
+    // transfer ownership of `data2` to `consume`
+    consume(data2)
+    // `data2` is now statically inaccessible, and logically uninitialized
+}
+
+fn consume(mut data3: Vec<u32>) {
+    // Mutating the collection is known to be safe, because `data3` knows
+    // it's the only one who can access it.
+    data3.push(1);
+}
+```
+
+The greatest of these rights is destruction: when a variable goes out of scope,
+it destroys its value forever. This can mean simply forgetting the value,
+or it can mean executing the type's destructor. In the case of a collection,
+this would presumably recursively destroy all contained values, and free all of
+its allocations.
 
 Affine types are primarily useful for eliminating the *use-after* family of bugs.
-If only one location ever has access to a value, and the value is only invalidated
-when that one location disappears, then it's trivially true that you cannot use
+If only one location ever has access to a value, and a value is only invalidated
+when that one location disappears, then it's trivially true that one cannot use
 an invalidated value. The most obvious applications of affine typing are with various
 forms of transient resources: threads, connections, files, allocations, and so on.
 
@@ -434,61 +370,21 @@ fn alternative(First) -> Alternative;
 Using affine types, valid control flow can be modeled at the type level to statically
 ensure correct usage. This can be done with a light hand, or a heavy hand.
 At the light end one can use it to hint at correct usage or avoid obvious errors.
-At the heavy end, one can push the entire program into the type system, as is
-the case for *[session types][]*. Once the signatures for such programs are written,
-the programs are said to "write themselves" as the only valid operations to perform
-are exactly those that should be performed.
+At the heavy end, one can effectively push the entire program into the type system, as is
+the case for *[session types][]*.
 
-Rust does not support *linear* typing, which requires that values be used
-exactly once. This means that in Rust it is always a valid option to simply drop
-a value on the ground and forget about it. Linear types can be quite useful when
-doing this kind of type-level encoding of logic, but Rust currently excludes
-them as a practical matter.
-
-First off, many of the use cases can be handled by affine types
-in conjunction with destructors: some default task that must be done at the end.
-However this is insufficient when additional information must be provided to
-complete the task. For instance, an allocation may need its allocator passed to it
-to clean itself up. In these cases, it may be sufficient to use a *destructor bomb*:
-a destructor that crashes the program. This of course allows incorrect programs to
-be compiled, but will hopefully quickly crash them in basic smoke-testing.
-
-For most programs this will catch any reasonable error, assuming a non-malicious
-programmer. However Rust *does* allow for values to be permanently leaked, in
-which case their destructors will never run. The standard library explicitly
-exposes a function for doing exactly this: `mem::forget`. However it is also
-possible to leak destructors accidentally. For instance, if a reference-counted cycle
-becomes unreachable, its data will never be destructed. At first this sounds quite
-serious, but reference-counting in Rust is fairly rare, and other aspects of ownership
-we will see later mean cycles are even rarer.
-
-This was the most important practical reason why Rust doesn't provide true
-linear types: being able to express programs that *could* leak was deemed too
-valuable. Modeling the ability to leak as some kind of effect system was briefly
-considered, but ultimately rejected for not carrying its weight (effect systems
-are generally a pain to work with, so Rust uses them sparingly).
-
-In practice this has not been a serious issue for end-users of an API: leaking
-destructors is effectively a convoluted action that no one ever needs to worry
-about doing accidentally. However this is an issue for *designers* of an API:
-soundness cannot rely on a destructor running. When this was fully realized,
-3 standard library APIs had to be modified (although two of them were only
-modified at the implementation level). We will explore these problems and their
-solutions in a later section.
-
-Affine typing is not mandatory. Rust has a Copy kind (an empty interface) that types
-may opt into if they consist only of other Copy types, and don't provide a
-destructor. Copy types behave like any other value with one simple caveat:
-when they're moved, the old copy of the value is still valid. This is used by
-most of Rust's primitives types like booleans and integers, as well as many
-simple composites.
+It should be noted that affine typing isn't mandatory. For many types, like
+booleans and integers, unique ownership doesn't make sense or isn't important.
+Such type can opt into the Copy kind (an empty interface). Copy types behave
+like any other value with one simple caveat: when they're moved, the old copy
+of the value is still valid.
 
 Copy semantics can have surprising consequences though.
 For instance, it may be reasonable to implement Copy for a random number
 generator (their internal state is generally just some integers). It then
 becomes possible to accidentally copy the generator, causing the same
-number to be yielded repeatedly. For this reason, many types which *could* be
-copied safely don't opt into Copy. In this case, affine typing is simply a lint
+number to be yielded repeatedly. For this reason, some types which *could* be
+copied safely don't opt into Copy. In this case, affine typing is used as a lint
 against what is likely, but not necessarily, a mistake.
 
 
@@ -501,16 +397,36 @@ Affine types are all fine and good for some stuff, but if that's all Rust had,
 it would be a huge pain in the neck. In particular, it's very common to want
 to *borrow* a value. In the case of a unique borrow, affine types can encode
 this fine: you simply pass the borrowed value in, and then return it back.
+
 This is, at best, just annoying to do. Borrows must be "threaded" throughout
-such an API explicitly in both the types and code.
+such an API explicitly in both the types and code:
+
+```rust
+struct Data { secret: u32 }
+
+fn main() {
+    let mut data = Data { secret: 0 }
+    data = mutate(data);
+    data = mutate(data);
+    data = mutate(data);
+}
+
+fn mutate(mut data: Data) -> Data {
+    data.secret += 1;
+    return data;
+}
+```
 
 However affine types really hit a wall when data wants to be *shared*. If
 several pieces of code wish to concurrently read some data, we have a serious
 issue. One solution is to simply *copy* the data to all the consumers. Each
-has their own unique copy to work with, and everyone's happy. However, even
+has their own unique copy to work with, and everyone's happy.
+
+However, even
 if we're ignoring the performance aspect of this strategy (which is non-trivial),
 it may simply not make sense. If the underlying resource to share is truly affine,
-then there may be *no* way to copy the data in a semantic-preserving way.
+then there may be *no* way to copy the data in a semantic-preserving way. For
+instance, one cannot just blindly copy a file handle.
 
 At the end of the day, having only values everywhere is just dang *impractical*.
 Rust is a practical language, so Rust has a solution: pointers! Unfortunately,
@@ -520,48 +436,83 @@ The fact that data has been moved or destroyed says nothing of the state of
 pointers to it. As C has demonstrated since its inception, pointers are all too
 happy to let us view data that might be destroyed or otherwise invalid.
 
-This is why pervasive garbage collection is such a popular solution to memory safety.
-However Rust does not include pervasive garbage collection. Rather, Rust's
-solution to this problem is Cyclone's most significant contribution to
+Garbage collection solves this problem for allocations, but does nothing to
+prevent trying to use an otherwise invalidated value, such as a closed file.
+Rust's solution to this problem is Cyclone's most significant contribution to
 the language: [regions][cyclone-regions].
 
 Like affine types, regions are something well established in both theory and
-implementation. Although Rust primarily steals them from Cyclone, they were first
-[described by Tofte and Talpin][tofte-regions] and used in an ML implementation.
-However Cyclone's implementation of the scheme is most immediately recognizable
-to a Rust programmer. The heart of the system is that pointers are associated with
-a region of the program that they're valid for, and the compiler ensures that
+implementation, but with little mainstream usage. Although Rust primarily steals
+them from Cyclone, they were first [described by Tofte and Talpin][tofte-regions]
+and used in an implementation of ML. That said, Cyclone's implementation of the scheme
+is most immediately recognizable to a Rust programmer.
+
+The heart of a region system is that pointers are associated with
+the region of the program that they're valid for, and the compiler ensures that
 pointers don't escape their region. This is done entirely at compile time, and
 has no runtime component.
 
 For Rust, these regions correspond to lexical scopes, which are roughly speaking
-pairs of matching braces (though many unwritten scopes exists for e.g. temporaries),
-and are called *lifetimes*. The restriction to lexical scopes is not fundamental,
-and was simply easier to implement for the 1.0 release.
+pairs of matching braces. Rust calls these regions *lifetimes*. The restriction to
+lexical scopes is not fundamental, and was simply easier to implement for the
+1.0 release. It is however sufficient for most purposes.
 
 At a base level, all a region system does is statically track what pointers are
 outstanding during any given piece of code. By combining this information with
 other static analysis it's possible to completely eliminate several classes of error
-that are traditionally relegated to garbage collection. First and foremost,
-we track the paths that are borrowed (for instance `variable.field1.field2`).
-Knowing this, we can then statically identify when a value is moved or destroyed
-while being pointed to, and produce an error to that effect.
+that are traditionally relegated to garbage collection. Region analysis allows us
+to statically identify when a value is moved or destroyed while being pointed to,
+and produce an error to that effect:
 
-However, when combined with an affine type system we get something more powerful
-than garbage collection. For instance, if you `close` a File in Java, there is
-nothing to prevent old pointers to the File from continuing to work with it. One
-must guard for this at runtime. However in Rust, this is simply not a concern:
-it's statically impossible.
+```rust
+fn main() {
+    // Gets a dangling pointer
+    let data = compute_it(&0);
+    println!("{}", data);
+}
+
+fn compute_it(input: &u32) -> &u32 {
+    let data = input + 1;
+    // Returning a pointer to a local variable
+    return &data;
+}
+```
+
+```text
+<anon>:11:13: 11:17 error: `data` does not live long enough
+<anon>:11     return &data;
+                      ^~~~
+<anon>:8:36: 12:2 note: reference must be valid for the anonymous lifetime #1 defined on the block at 8:35...
+<anon>: 8 fn compute_it(input: &u32) -> &u32 {
+<anon>: 9     let data = input + 1;
+<anon>:10     // Returning a pointer to a local variable
+<anon>:11     return &data;
+<anon>:12 }
+<anon>:9:26: 12:2 note: ...but borrowed value is only valid for the block suffix following statement 0 at 9:25
+<anon>: 9     let data = input + 1;
+<anon>:10     // Returning a pointer to a local variable
+<anon>:11     return &data;
+<anon>:12 }
+```
+
+On its own, this is pretty great: no dangling pointers without the need for
+garbage collection! However when combined with an affine type system
+we get something even more powerful than garbage collection. For instance, if
+you close a file in a garbage collected language, there is nothing to prevent
+old pointers to the file from continuing to work with it. One must guard for
+this at runtime. However in Rust, this is simply not a concern:
+it's statically impossible. Closing the file destroys it, and that means all
+pointers must be gone.
 
 Unfortunately, this alone does nothing for finer-grained data invalidation. For
 instance, what if we have a pointer to a growable array, as well
 as a pointer *into* the array? If the array can be told to `pop` an element through a
 pointer, then the element can become invalidated. There are several ways we could
-approach this problem.
+approach this problem:
 
 The most extreme solution is to simply forbid internal pointers. Then we never
-have to worry about them being invalidated. Unfortunately this throws a way a
-ton of the value of pointers. Interior pointers are really useful.
+have to worry about them being invalidated. Unfortunately this throws away a
+ton of the value of pointers. Interior pointers are really useful!
 
 Another way is to teach the region system about this data structure in
 a deep way. Teach it that the pointer points to some internal data of the array,
@@ -579,7 +530,7 @@ This is unfortunate because we were trying to avoid borrow-threading by introduc
 pointers in the first place. But hey, at least we can share data immutably,
 which is still a definite win.
 
-Rust basically takes this approach, but in order to avoid the annoying pain of
+Rust basically takes this last approach, but in order to avoid the annoying pain of
 threading borrows, it includes two different *kinds* of pointer:
 *mutable references*, and *shared references*, denoted `&mut` and `&`
 respectively. Shared references are exactly as we described: they can be
@@ -591,19 +542,71 @@ to move it back into place when the mutable reference is gone (of course, the
 compiler does not actually move the data around when you take a mutable
 reference).
 
+
+
+
+## Mutable ^ Shared
+
 This is Rust's most critical perspective on ownership: mutation is mutually
 exclusive with sharing. In order to get the most out of this perspective, Rust
 also doesn't allow mutability to be declared at the type level. That is, a struct's
 field cannot be declared to be constant. Instead, the mutability of a value is
-*inherited* from how it's accessed: if you have something by-value or
+*inherited* from how it's accessed: as long as you have something by-value or
 by-mutable-reference, you can mutate it.
 
-This stands in contrast to the functional perspective that mutation is simply
-not okay. However even though
-we're more permissive than functional languages, we end up eliminating many of
-the same problems. Iterator invalidation (and equivalent view invalidation bugs)
-are no more under this scheme, because an iterator borrows the collection,
-preventing anyone else from mutating it.
+This stands in contrast to the perspective that mutation is something to be
+avoided completely. It's well-known that mutation can cause problems, as we've
+seen. This has lead some to conclude that mutation should be avoided as much
+as possible. Never mutating anything does indeed satisfy Rust's requirement
+that sharing and mutating be exclusive, but in a vacuous way (mutating never
+occurs). Rust takes a more permissive stance: mutate all you want as long
+as you're not sharing. It is our belief that this eliminates most of the
+problems that mutation causes in practice.
+
+In particular, this eliminates a particularly pernicious kind of bug: *view
+invalidation*. This is a problem that almost every language struggles with. Someone
+takes a view into some data (a pointer and possible additional state), and then
+someone else mutates the data causing the view to become invalid. The classic
+example of view invalidation is *iterator invalidation*: someone trying to
+mutate a collection while it's being iterated. There are some ways to do this
+safely, but even if it's safe, it's likely a programming error.
+
+For instance, consider the following program:
+
+```rust
+fn main() {
+    let mut data = vec![1, 2, 3, 4, 5, 6];
+    for x in &data {
+        data.push(2 * x);
+    }
+}
+```
+
+What exactly the programmer's intent was here was unclear, and what exactly
+will happen if this were allowed to compile is even more unclear. If the
+iterator is C-like and stores a pointer directly into the array, then this code
+will cause a use-after-free. Eventually the array will run out of memory and
+have to reallocate, at which point, the iterator will point to free'd memory.
+If the iterator is more conservative and instead points at the growable array
+itself while holding an index into the array, then the iterator will be robust
+to reallocations. However this code will still be an infinite loop.
+
+Thankfully, in Rust we don't *need* to wonder what the programmer meant or
+what will happen when this is run, because it doesn't compile:
+
+```text
+<anon>:4:9: 4:13 error: cannot borrow `data` as mutable because it is also borrowed as immutable
+<anon>:4         data.push(2 * x);
+                 ^~~~
+<anon>:3:15: 3:19 note: previous borrow of `data` occurs here; the immutable borrow prevents subsequent moves or mutable borrows of `data` until the borrow ends
+<anon>:3     for x in &data {
+                       ^~~~
+<anon>:5:6: 5:6 note: previous borrow ends here
+<anon>:3     for x in &data {
+<anon>:4         data.push(2 * x);
+<anon>:5     }
+             ^
+```
 
 This strategy also nicely generalizes to a concurrent context. A data race is
 defined to occur when two threads access a piece of data in an unsynchronized
@@ -615,15 +618,28 @@ controlled manner.
 
 As a result, although inherited mutability is the default way to do things in
 Rust, it is not the only way. A few key types provide *interior mutability*,
-which enables its data to be mutated through shared references, with some
+which enable their data to be mutated through shared references, with some
 runtime mechanism to ensure that mutable references aren't aliased. The most
 obvious example of this is exactly the standard library's Mutex type, which
-allows an `&Mutex<T>` to become an `&mut T` by acquiring its lock.
+allows a `&Mutex<T>` to become an `&mut T` by acquiring its lock.
+
+However this is useful pattern even outside of a concurrent context, and some
+single-threaded equivalents also exist. These types are however prevented from
+being used in a concurrent context precisely because they aren't threadsafe.
+(Is this worth going into? Seems like a digression)
+
+
+
 
 
 
 
 # Unsafe Rust
+
+(this needs to be rewritten because it was based on the old stuff. I think I
+might want to hoist a discussion of safety to be closer to the data trust stuff?
+Defining memory safety, type safety, and so on. Basically a better version of
+my blog post)
 
 We originally separated all programming languages into two major categories:
 those that are safe, and those that are unsafe. This is of course a ridiculous
@@ -733,7 +749,13 @@ programming environment that is safe, efficient, and usable.
 
 
 
+
+
+
+
 # Designing APIs for Trust
+
+(Haven't looked at this in a while, might be really out of date)
 
 It has been our experience that almost everything you want to express at a high level
 can be safely, efficiently, and usably expressed in an ownership-oriented system.
@@ -749,14 +771,15 @@ indexing out of bounds is a fundamental memory safety violation. There are three
 major strategies for indexing: blindly trust the value, blindly check the value, or
 statically prove the value is valid.
 
-Blindly checking the value is the most common strategy, because it's safe, easy to
-use, and easy to implement. Blind trust is of course unsafe, but generally more
-efficient. Statically validating the value is in principle the best of both worlds:
-maximally efficient, and even safer than the checked version because it's guaranteed
-to succeed at runtime. However statically proving all indexing is in bounds is
-suffers from the usability perspective. Using dependent types, it *is* possible to
-statically verify some bounds checking, but it takes a pretty significant extension
-to most languages to support this.
+To recap, always checking the value at runtime is the most common strategy,
+because it's safe, easy to use, and easy to implement. Blindly trusting the
+value is of course unsafe, but
+generally more efficient. Statically validating the value is in principle the best
+of both worlds: maximally efficient, and even safer than the checked version
+because it's guaranteed to succeed at runtime. However statically proving all
+indexing is in bounds suffers from the usability perspective. Using dependent
+types, it *is* possible to statically verify some bounds checking, but it takes
+a pretty significant extension to most languages to support this.
 
 Due to the significant complexity of dependent types, Rust opted for the runtime
 checking solution. Interestingly, even though Rust programs are
@@ -764,8 +787,8 @@ checking solution. Interestingly, even though Rust programs are
 lose performance.
 
 First off, these bounds checks are by definition trivially predictable in a
-correct program. So the overhead at the hardware level is quite small. However
-incurring  perfect branch predicts is the worst-case. A good optimizing compiler
+correct program. So the overhead at the hardware level is quite small. That said,
+having to do the checks at all s the worst-case. A good optimizing compiler
 (like LLVM) can optimize away many bounds checks. For instance, the following
 code doesn't actually perform any bounds checks when optimized, because LLVM can
 see that the way the indices are generated trivially satisfies the bounds
@@ -789,16 +812,18 @@ perhaps the most serious cost of bounds checks: inhibiting other optimizations.
 
 If we really care about avoiding this cost, we can't just rely on the optimizer
 to magically figure out what we're doing: We need to actually not do bounds
-checking. Arrays in Rust expose an unsafe unchecked version of indexing
-for exactly this situation. However this is an unfortunate trade to make:
-guaranteed unchecked iteration puts memory safety at risk.
+checking. One solution is to provide an escape hatch to the safe interface:
+provide a raw unchecked version of indexing. However opting into this is an
+unfortunate trade to make: guaranteed unchecked iteration puts memory safety at
+risk.
 
 Thankfully, this is a false dichotomy. This code is hard to optimize safely
 because we've pushed too much of the problem at hand to the user of the array.
 They need to figure out how to generate the access pattern, and we in turn can't
 trust it. If the array itself handles generating the access pattern *and*
 acquiring the elements, then all the bounds checks can be eliminated at the
-source level safely. This is handled by a tried and true approach: iterators.
+source level in a way that's safe to the end-user. This is handled by a tried
+and true approach: iterators.
 
 ```rust
 let mut sum = 0;
@@ -810,23 +835,26 @@ for &x in arr.iter() {
 This produces the same optimized code as the original indexing-based solution,
 but more importantly, it's more robust to transformations. Iterating
 backwards now also produces vectorized unchecked code, because the optimizer
-has less to prove about our data.
+has less to prove about the program's behaviour. As an added bonus, client code
+ends up simplified as well, as all the error-prone iteration boiler plate has
+been eliminated.
 
-As an added bonus, client code ends up simplified as well, as all
-the error-prone iteration boiler plate has been eliminated.
-Of course, this adds more implementation burden to the developer of an API.
-Special access patterns that can be optimized cannot generally be built
-by an external client unless an unsafe "raw" API is also exposed. For arrays,
-there *is* a raw API because it's simple and obvious. However
-complexity basically only goes up from arrays, and this may not always be
-reasonable to do.
+Of course, this doesn't come for free: iterators are effectively special-casing
+certain access patterns at the burden of the interface's implementor. In the
+case of iterators, this burden is well justified. Linear iteration
+is incredibly common, and is well worth the specialization. But if the
+user wants binary search an array without bounds checks, iterators do them no
+good.
 
-Note that it is *not* sufficient for the array to *just* produces the indices.
-Even if the indices were wrapped in an opaque type so they couldn't be modified,
-they could be stored until they're no longer valid, or passed to a completely
-*different* array, which has no way to identify which array the indices originated
-from. Only by building a complete abstraction wrapping the whole iteration
-process can we obtain sufficient data-trust to produce a satisfactory result.
+This is why Rust also provides a raw unchecked indexing API. If users have a
+special case and really need to optimize it to death, they can drop down to
+the raw API and regain full control. In the case of arrays, the raw API is
+trivial to provide and obvious, so there is little worry of the maintenance burden
+or unnecessarily exposing implementation details. This isn't true for all
+interfaces (what's the raw API for searching an abstract ordered map?).
+
+
+
 
 It turns out that ownership provides us with powerful tools for manufacturing
 data trust. For instance, escape analysis is notable in garbage collected
@@ -847,6 +875,8 @@ the optimizer's slow path.
 
 
 # Entry API
+
+(not finished)
 
 As we have noted, abstractions are not a panacea. A bad abstraction can end up
 producing more work the designers and users of the abstraction. A notable example
@@ -916,11 +946,244 @@ we only have one, `entry(key)`
 
 
 
-TODO: Entry API
 
-TODO: BTree Closure trick "inverse escape analysis"
 
-=
+
+# Hacking Dependent Types on top of Rust
+
+Given the array iteration example, one might wonder if it's sufficient for the
+array to simply provide the indices. This would be a more composable API with
+a reduced implementation burden. Perhaps this API could be used something like this:
+
+```
+let mut sum = 0;
+for i in arr.indices() {
+    sum += arr[i];
+}
+```
+
+Unfortunately, this doesn't immediately get us anywhere. This is no different
+than the original example which produced its own iteration sequence. As soon
+as the array loses control of the yielded indices, they are *tainted* and all
+trust is lost. One may consider wrapping the integers in a new type that doesn't
+expose the values to anyone but the array, preventing them from being
+tampered with.
+
+However this is still insufficient unless the *origin* of
+these values cannot be verified. Given two arrays, it mustn't be possible to index
+one using the indices of the other:
+
+```
+let mut sum = 0;
+for i in arr1.indices() {
+    // index arr2 using arr1's trusted indices
+    sum += arr2[i];
+}
+```
+
+This is a problem most static type systems generally struggle to model, because
+they don't provide tools to talk about the origin or destination of a particular
+instance of a type. In addition, even if we could prevent this, we would have to
+deal with the problem of temporal validity. The indices into an array are only
+valid as long as the array's length doesn't change:
+
+```
+let i = arr.indices().next().unwrap();
+arr.pop();
+// index arr with an outdated index
+let x = arr[i];
+```
+
+By pure accident, Rust provides enough tools to solve
+this problem. It turns out that lifetimes in conjunction with some other features
+are sufficient to construct a limited form of dependent typing. We won't lie:
+this is an ugly hack, and we don't expect to use it in any kind of regular way.
+Still, it's an option.
+
+In order to encode sound unchecked indexing, we need a way for types to talk about
+particular instances of other types. In this case, we specifically need a way
+to talk about the relationship between a particular array, and the values of
+indices. Rust's lifetime system, it turns out, gives us exactly that. Every
+instance of a value that contains a lifetime (e.g. a pointer) is referring to
+some particular region of code. Further, code can require that two lifetimes
+satisfy a particular relationship (typically, that one outlives the other).
+
+The basic idea is then as follows: associate an array and its indices with
+a particular region of code. Unchecked indexing then simply requires that the
+input array and index are associated with the same region.
+However care must be taken, as Rust was not designed to support this. In
+particular, the borrow checker is a constraint solver that will attempt do
+everything in its power to make code pass type checking. As such, if it sees
+a constraint that two lifetimes must be equal it may expand their scopes in
+order to satisfy this constraint. Since we're trying to explicitly use equality
+constraints to prevent certain programs from compiling, this puts us at odds
+with the compiler.
+
+In order to accomplish our goal, we need to construct a black box that the
+borrow checker can't penetrate. This involves two steps: disabling lifetime variance,
+and creating an inaccessible scope. Disabling variance is relatively straight
+forward. Several generic types disable variance in order to keep Rust sound.
+Getting into the details of this is fairly involved, so for now we will just
+say we can wrap a pointer in the standard library's Cell type as follows:
+
+```rust
+struct Index<'id> {
+    data: usize,
+    _id: Cell<&'id u8>,
+}
+```
+
+Of course we don't *actually* want to store a pointer at runtime, because we're
+only interested in creating a lifetime for the compiler to work with. Needing to
+signal that we contain a lifetime or type that we don't directly store is a
+sufficiently common requirement in Rust that the language provides a primitive
+for exactly this: PhantomData. PhantomData tells the type system "pretend I
+contain this", while not actually taking up any space at runtime.
+
+```rust
+// Synonym to avoid writing this out a lot
+type Id<'id> = PhantomData<Cell<&'id u8>>;
+
+struct Index<'id> {
+    data: usize,
+    _id: Id<'id>,
+}
+```
+
+Now Rust believes it's unsound to freely resize the `'id` lifetime. However, as
+written, there's nothing that specifies where this `'id` should come from. If
+we're not careful, Rust could *still* unify these lifetimes if it notices
+there's no actual constraints on them. Consider the following kind of program
+we're trying to prevent:
+
+```rust
+let arr1: Array<'a> = ...;
+let arr2: Array<'b> = ...;
+let index: Index<'a> = arr1.get_index();
+
+// This should fail to compile; trying to index Array<'b> with Index<'a>
+let x = arr2[index];
+```
+
+If we don't constrain the lifetimes `'a` and `'b`, then the constraint solver
+will see only the following system:
+
+* `'a` and `'b` are invariant lifetimes
+* indexing requires `'a = 'b`
+
+Which has the obvious solution of `'a = 'b = anything`. We need to apply some
+constraint to `'a` and `'b` to prevent Rust from unifying them. Within a single
+function the compiler has perfect information and can't be tricked. However
+Rust explicitly does not perform inter-procedural analysis, so we can apply
+constraints with functions. In particular, Rust has to assume that the *input*
+to a function is a "fresh" lifetime, and can only unify them if that function
+provides constraints:
+
+```rust
+fn foo<'a, 'b>(x: &'a u8, y: &'b u8) {
+    // cannot assume x has any relationship to y, since they
+    // have their own lifetimes
+}
+
+fn bar<'a>(x: &'a u8, y: &'a u8) {
+    // x has the same lifetime as y, since they share 'a
+}
+```
+
+Therefore, for every fresh lifetime we wish to construct, we require a new
+function call. We can do this in as ergonomically as possible (considering this
+is a hack) by using closures:
+
+```
+fn main() {
+    let arr1 = &[1, 2, 3, 4, 5];
+    let arr2 = &[10, 20, 30];
+
+    // Yuck! So much nesting!
+    make_id(arr1, move |arr1| {
+    make_id(arr2, move |arr2| {
+        // Within this closure, Rust is forced to assume that the lifetimes
+        // associated with arr1 and arr2 originate in their respective make_id
+        // calls. As such, it is unable to unify them.
+
+        // Iterate over arr1
+        for i in arr1.indices() {
+            // Will compile, no bounds checks
+            println!("{}", arr1.get(i));
+
+            // Won't compile
+            // println!("{}", arr2.get(i));
+        }
+    });
+    });
+}
+
+/// An Invariant Lifetime
+type Id<'id> = PhantomData<Cell<&'id u8>>;
+
+/// A wrapper around an array that has a unique lifetime
+struct Array<'arr, 'id> {
+    array: &'arr [i32],
+    _id: Id<'id>,
+}
+
+/// A trusted in-bounds index to an Array with the same lifetime
+struct Index<'id> {
+    idx: usize,
+    _id: Id<'id>,
+}
+
+/// A trusted iterator of in-bounds indices into an Array
+/// with the same lifetime
+struct Indices<'id> {
+    min: usize,
+    max: usize,
+    _id: Id<'id>,
+}
+
+/// Given a normal array, wrap it to have a unique lifetime
+/// and pass it to the given function
+pub fn make_id<'arr, F>(array: &'arr [i32], func: F)
+    where F: for<'id> FnOnce(Array<'arr, 'id>),
+{
+    let arr = Array { array: array, _id: PhantomData };
+    func(arr);
+}
+
+impl<'arr, 'id> Array<'arr, 'id> {
+    /// Access the following index without bounds checking
+    pub fn get(&self, idx: Index<'id>) -> &'arr i32 {
+        unsafe { self.get_unchecked(idx.idx) }
+    }
+
+    /// Get an iterator over the indices of the array
+    pub fn indices(&self) -> Indices<'id> {
+        Indices { min: 0, max: self.array.len(), _id: PhantomData }
+    }
+}
+
+impl<'id> Iterator for Indices<'id> {
+    type Item = Index<'id>;
+    pub fn next(&mut self) -> Option<Self::Item> {
+        if self.min == self.max {
+            None
+        } else {
+            self.min += 1;
+            Some(Index { idx: self.min - 1, _id: PhantomData })
+        }
+    }
+}
+```
+
+That's a *lot* of work to safely avoid bounds checks, and although there's
+only a single line marked as `unsafe`, its soundness relies on a pretty deep
+understanding of Rust. Any errors in the interface design could easily make
+the whole thing unsound. So we *really* don't recommend doing this. Also, whenever
+this interface catches an error, it produces nonsensical lifetime errors because
+Rust has no idea what we're doing. That said, it does demonstrate our ability to
+model particularly complex constraints.
+
+
 
 
 # jdjjdjjdjdjjdjjdjjdjdjdjdjdd
