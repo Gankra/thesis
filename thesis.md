@@ -23,6 +23,8 @@ the only language that comes even close to Rust in this regard is
 [Cyclone][], which is no coincidence. Rust has sourced many great ideas from
 Cyclone.
 
+BUT ALMS THOUGH.
+
 However Cyclone was largely trying to be as close as possible to C. As such,
 many aspects of ownership weren't as well integrated or fleshed out as in Rust,
 as legacy constraints got in the way. Cyclone has also unfortunately been
@@ -37,9 +39,23 @@ it attempts to address.
 
 
 
-# Trusting Data
+# Safety and Correctness
 
 Programming is hard. \[citation needed\]
+
+Any programmer that asserted they had written some non-trivial code that is
+completely bug-free would be met with great suspicion. Programs are *wrong*.
+That's what they do!
+
+Still, we'd like our programs to be as correct as possible. Or, put another
+way, it'd be nice if our programs weren't *needlessly* incorrect. The magnitude
+of errors is also an important aspect to consider. Formatting some output
+incorrectly is one thing, but dumping an entire database isn't to be taken
+lightly.
+
+
+# Trusting Data
+
 
 We focus on one particularly interesting aspect of programming: trusting data.
 All programs require or expect data to have certain properties. This trust
@@ -1186,12 +1202,223 @@ model particularly complex constraints.
 
 
 
-# jdjjdjjdjdjjdjjdjjdjdjdjdjdd
+# Limitations of Ownership
+
+We've seen several problems that ownership allows us to cleanly model several
+problems, preventing incorrect usage without runtime overhead. In particular,
+ownership is very good at preventing the use-after and view-invalidation
+classes of errors. This is because ownership's primary role is to prevent data
+from being accessed at inappropriate times. However ownership is unable to
+properly model the opposite problem: *requiring* data be accessed.
+
+Perhaps the most famous class of errors that this covers is *leaks*. Leaks occur when
+a program acquires resources but fails to release them when they're no longer
+needed. Memory leaks are the most infamous, but one also easily leak file
+descriptors, threads, connections, and more. Leaks are a particularly
+pernicious bug because they generally don't immediately affect the behaviour
+of a program. Leaks may be completely irrelevant, or even desirable, for
+short-lived programs. However leaks may cause long-lived programs to mysteriously
+crash at seemingly arbitrary times.
+
+Leaks aren't well-modeled by ownership because they occur when a program *doesn't*
+do something: freeing memory, closing a file, terminating a thread, and so on.
+Unfortunately, the nature of leaks makes them much harder to define, and therefore
+eliminate. Most would generally agree that completely forgetting about an
+address in memory without freeing it is a leak. However simply holding onto a
+value that will never again be used is arguably also a leak. In extreme cases,
+simply failing to throttle usage may be regarded as a leak.
+
+The classic leak is something that is fairly well-defined and approachable,
+but the more advanced kinds of leak are something we consider impractical to
+address, due to their reliance on arbitrary program semantics.
+
+The ability to just drop a value on the ground and forget about it is an
+explicit feature of affine types, which say values can be used *at most* once.
+In order to encode that a value must be properly consumed, we need to be able
+to express that a value must be used *exactly* once. Types with this property
+are said to be *linear*.
+
+A poor-man's linear-typing can be acquired with *destructors*. A value's destructor
+is some code to execute when it goes out of scope. This effectively mandates that
+values with destructors be used exactly once: the owner who decides to drop the
+value on the ground is forced to invoke the value's destructor.
+
+The most obvious limitation to this approach is that since destructors are implicitly invoked,
+they cannot take any additional context. For instance, it may be desirable
+to have a type that is allocated using a custom allocator, but does not store
+a pointer to that allocator. The type therefore has insufficient information
+to clean itself up, requiring the allocator be passed to it. A more robust linearity
+system would allow us to encode this by requiring the destructor be explicitly invoked with
+the allocator as an argument.
+
+That said, destructors do a great job for many types. Collections and files
+have a single "natural" final operation that requires no additional context.
+Collections free their allocations and Files close their file descriptors.
+Destructors also have the distinct advantage over more general linearity in that
+they compose well with generic code. If some generic code wants to drop a value
+on the ground, it can always do this knowing any linear requirements will be
+satisfied by the destructor. Destructors provide a uniform interface with no
+context required precisely *because* they aren't general.
+
+Unfortunately, ensuring that code *does* execute is a bit of a nastier problem.
+At the limit, hardware can fail and programs can abort. We just need to live
+with that fact. For most resources this is actually fine; either the resources are
+rendered irrelevant by the program ending, or the operating system will automatically
+clean them all up itself.
+
+However even accepting those circumstances, strict
+linearity is a bit of a pain. In particular, it is desirable to be able to
+create reference-counted cycles of types with destructors. If all references to
+this cycle are lost, then it will still keep itself alive, leaking the destructors
+themselves. Further, it is sometimes desirable to manually prevent a destructor
+from running, particularly when decomposing it into its constituent parts. For
+instance, one may wish to downgrade a pointer that knows it lives on the heap
+to a raw pointer, perhaps to pass to a C API.
+
+There are various solutions to this problem, but most languages that include
+destructors (C++, Rust, D, C#, Java, ...) generally accept that sometimes
+destructors (AKA finalizers) won't run. They're convenient and generally
+reliable, but if one *really* needs something to happen, they can't always be
+relied on. For Rust in particular, one can't pass a value with a destructor to
+an arbitrary third-party, and rely on the destructor to ever be called, even if
+the borrows it held have expired.
+
+As a concrete example, we can consider Rust's `drain` interface. `Drain` is a
+utility for efficiently performing bulk removal from the middle of a growable
+array. Arrays require their elements to be stored contiguously, so removing
+from the middle of one generally requires the elements after it to be
+back-shifted to fill the hole. Doing this repeatedly is incredibly expensive,
+so it's desirable to be able to defer the backshift until we are done removing
+elements. Doing this means the array is in an unsound state while the
+removals are happening.
+
+One solution to this problem is to require the removals to be done in an
+atomic fashion. For instance, if `drain` required a destination buffer to be
+passed to it, then it could copy all the elements at once and back-shift at the
+end of the function call. To the caller of `drain`, the array would appear to
+always be in a consistent state. However such an interface is another example
+of taking too much control from the user. They may not want to copy the elements
+anywhere, but instead want to destroy them right away.
+
+Instead, `drain` is implemented as an iterator. Elements are removed one at a
+time, allowing the user to decide what is done with them without any need for
+temporary allocations. However this means that we need to worry about the user
+observing this inconsistent state, and how to clean it up. At first blush, the
+problem seems trivial for Rust to solve. Drain is mutating the array, so it
+contains a mutable reference to the array. That means the array is inaccessible
+through any interface but the iterator itself while it exists. The backshift can
+then be done in the iterator's destructor, which is exactly when the borrow it
+holds expires. Perfect!
+
+```rust
+// A growable array with 5 numbers
+let mut arr = vec![0, 1, 2, 3, 4];
+
+// Drain out elements 1 to 3 (exclusive).
+// The result of `drain` is an iterator
+// that we pass to the for loop to drive.
+for x in arr.drain(1..3) {
+    // arr is statically inaccessible here
+    println!("{}", x);
+}
+// backshifting is performed once here
+// arr is now accessible again
+
+// 1 and 2 are now gone
+assert_eq!(arr, vec![0, 3, 4]);
+```
+
+Unfortunately, the soundness of this design relies on the user of our interface
+allowing the destructor to run. No reasonable code would ever *not* run the
+destructor, but since one can violate memory safety by accessing these empty
+indices, we cannot tolerate the possibility.
+
+Thankfully, all is not lost. The solution to our problem is in fact quite simple.
+Rather than relying on the destructor to put the array in a *sound* state,
+we will put the array into an incorrect but otherwise sound state, and rely on
+the destructor to put the array into the correct state. We call this strategy
+*poisoning*. If the user of our interface prevents the destructor from running,
+they'll get a poisoned array which will probably cause their program to behave
+incorrectly, but be unable to violate memory safety.
+
+In the case of `drain`, the poison is setting the length of the array to be zero.
+The destructor in turn just sets the length to the correct value (which it would
+have done anyway). So the overhead for this scheme is zeroing out a single
+integer, which is completely negligible considering the operation we're performing.
+The consequence of this poison is that all the elements in the array will be
+lost if the destructor is leaked. There's a certain fairness to this: you leak me,
+I leak you!
+
+Not all interfaces have such a convenient poison though. If this is the case, one
+may instead ensure some code executes by inverting the control. Instead of our
+code having to execute in the user's function, we can require the user's code
+to execute in ours. In the case of drain, we can require the user to pass a
+function that will be passed a *pointer* to the iterator, preventing them from
+gaining true ownership of the iterator. We can then guarantee that the iterator's
+destructor always runs by dropping it in our own function. In fact, because we
+always control the value, we don't even need to use a destructor to ensure the
+cleanup code runs.
+
+```rust
+let mut arr = vec![0, 1, 2, 3, 4];
+
+// Drain out elements 1 to 3 (exclusive).
+// `drain` has no result, but instead passes a
+// pointer to a Drain iterator that it owns.
+arr.drain(1..3, |iter| {
+    // arr is statically inaccessible here
+    for x in iter {
+        println!("{}", x);
+    }
+}); // backshifting is performed once here
+// arr is now accessible again
+
+// 1 and 2 are now gone
+assert_eq!(arr, vec![0, 3, 4]);
+```
+
+This design is a bit less ergonomic and flexible, but it can easily cover the
+common cases.
 
 
 
 
+# Related Work
 
+As has been noted, Rust's constituent parts aren't unique. Other languages have
+consequently been built on the same or similar foundations. Of particular
+interest is Cyclone, Alms, and Vault.
+
+
+
+## Cyclone
+
+Although Rust was not originally based on Cyclone, the version of Rust that
+was stabilized can be seen as the direct descendant of the final version of
+Cyclone. Most notably, the region analysis employed by Rust and Cyclone for
+borrowed pointers is (as far as we can tell) identical. Where the two deviate
+is in affine typing. Since Cyclone intended to be a drop-in replacement for C,
+it was based largely around copy semantics, and not move semantics. However
+near the end of its development Cyclone introduced affine unique and
+reference-counted pointers in order to enable more flexible memory management.
+These types were built into the language, and no mechanism was provided to mark
+other types as affine. As such, affine typing couldn't be used as a mechanism to
+manage access to data, because all other data was still freely copyable. Instead,
+affine typing was used exclusively for allocation management.
+
+
+
+
+## Alms
+
+Alms has affine types, but exposes a more advanced mechanism than regions. It's
+sufficient to implement regions as a library notion.
+
+
+
+## Vault
+
+Vault uses linear typing instead of affine typing.
 
 
 [Cyclone]: http://www.cs.umd.edu/projects/cyclone/papers/cyclone-safety.pdf
@@ -1205,3 +1432,4 @@ model particularly complex constraints.
 [sort-cliff]: TODO
 [pivot-selection]: TODO
 [no-array-bounds]: http://www.cs.bu.edu/~hwxi/academic/papers/pldi98.ps
+[alms]: http://users.eecs.northwestern.edu/~jesse/pubs/dissertation/tov-dissertation-screen.pdf
