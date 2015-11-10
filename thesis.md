@@ -1,3 +1,7 @@
+Note: general absence of citations and some broken links because that's not
+really the focus right now. Trying to figure out the core ideas.
+
+
 # Thesis Titles
 
 * You Can't Spell Trust Without Rust
@@ -17,7 +21,7 @@ ergonomic. We explore how Rust accomplishes this through *ownership*.
 
 # Introduction
 
-(This is kinda sparse -- not important)
+(This is kinda sparse -- not important right now)
 
 Rust is a new programming language with ambitious goals: in principle, Rust
 is faster than C++, safer than Java, and easier to develop in than
