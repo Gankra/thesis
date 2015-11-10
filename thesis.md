@@ -8,12 +8,16 @@
 
 # Abstract
 
+(This is boring)
+
 Rust is a new systems programming language that aims to be safe, fast, and
 ergonomic. We explore how Rust accomplishes this through *ownership*.
 
 
 
 # Introduction
+
+(This is kinda sparse -- not important)
 
 Rust is a new programming language with ambitious goals: in principle, Rust
 is faster than C++, safer than Java, and easier to develop in than
