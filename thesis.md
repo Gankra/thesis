@@ -1389,7 +1389,7 @@ Therefore, for every fresh lifetime we wish to construct, we require a new
 function call. We can do this in as ergonomically as possible (considering this
 is a hack) by using closures:
 
-```
+```rust
 fn main() {
     let arr1 = &[1, 2, 3, 4, 5];
     let arr2 = &[10, 20, 30];
