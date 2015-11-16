@@ -12,42 +12,94 @@ really the focus right now. Trying to figure out the core ideas.
 
 # Abstract
 
-(This is boring)
-
-Rust is a new systems programming language that aims to be safe, fast, and
-ergonomic. We explore how Rust accomplishes this through *ownership*.
+Rust is a new system's programming language developed by Mozilla.
+We provide an original analysis of Rust's design in terms of *trust*,
+show how existing Rust APIs model trust, and discuss several
+novel API designs that enable programmers to model different
+trust constraints.
 
 
 
 # Introduction
 
-(This is kinda sparse -- not important right now)
+Rust is a new programming language with ambitious goals. It intends to be
+faster than C++ while also being safer than Java without sacrificing ergonomics.
+At the same time, Rust does not desire to invent novel systems or analyses
+because research is hard, slow, and risky. Indeed, to a well-versed programming
+language theorist, Rust is just a collection of well-established tools. However,
+Rust as a whole represents a novel system which merits research. In particular,
+several of Rust's features come together into a system for modeling the
+*ownership* of data, which is surprisingly expressive and ergonomic. This is the
+system that enables Rust to be as safe, fast, and ergonomic as we claim.
 
-Rust is a new programming language with ambitious goals: in principle, Rust
-is faster than C++, safer than Java, and easier to develop in than
-both! Rust also enables programmers to be fearless in the face of
-concurrency and parallelism.
+Rust's ownership system is similar to the systems seen in both C++ and Cyclone,
+but deviates significantly enough to warrant fresh analysis. In particular,
+we observe that many of the kinds of problems Rust seeks to solve boil down
+to issues of *trust* between different pieces of code and the data they share.
+Because Rust's ownership system allows developers to model access to data in
+novel ways, it's possible to model the trust these interfaces require to be
+safe and efficient, without significant ergonomic compromises.
 
-These are bold claims. What possible mechanism could enable this? Well, nothing
-on its own is *truly* sufficient to make these claims. Rust largely just steals good
-ideas from wherever it finds them. Piecewise, Rust isn't a particularly novel
-language. This was in fact a specific design goal, because research is hard and slow.
-As a whole, however, Rust has developed some interesting systems and insights.
-The most important of these is *ownership*. Rust models data ownership in a
-first-class manner unlike any other language in production today. To our knowledge,
-the closest language to Rust in this regard is [Cyclone][], which is no coincidence.
-Rust has sourced many great ideas from Cyclone.
+Ownership particularly shines when one wants to develop concurrent programs,
+and infamously difficult problem. Using Rust's tools for generic programming,
+it's possible to build totally safe concurrent algorithms and data structures
+which work with arbitrary data without relying on any particular paradigm like
+message-passing or persistence. Rust's crowning jewel in this regard is the
+ability to safely have child threads mutate data on a parent thread's stack
+without any extra synchronization, as this program demonstrates:
 
-However Cyclone was largely trying to be as close as possible to C. As such,
-many aspects of ownership weren't as well integrated or fleshed out as in Rust,
-as legacy constraints got in the way. Cyclone has also unfortunately been
-officially abandoned, and is no longer maintained or supported. By contrast,
-Rust 1.0 was released last year, and the language has been going strong ever
-since.
+```rust
+[dependencies]
+crossbeam = 0.1.6
 
-This thesis focuses on Rust's ownership system, the systems it can express,
-and its limitations. However, in order to properly understand ownership, we
-must first understand its motivation.
+-----
+
+extern crate crossbeam;
+
+fn main() {
+    let mut array = [1, 2, 3];
+
+    // Create a scope to know when to join all threads
+    crossbeam::scope(|scope| {
+
+        // Get pointers to each element in the array
+        for x in &mut array {
+
+            // Spawn a thread to increment this element of the array
+            scope.spawn(move || {
+                *x += 1;
+            });
+        }
+
+        // Block on all the child threads joining here
+    });
+
+    println!("{:?}", array);
+}
+```
+
+The most amazing part of this program is that it's based entirely on a
+third-party library (crossbeam). Rust does not require threads to
+be modeled as part of the language or standard library in order for these
+powerful safe abstractions to be constructed. Any attempt to share non-threadsafe
+data with the scoped threads, give the same pointer to two threads, keep a pointer
+for too long, or mutate the array during iteration won't just fail to work, it
+will *fail to compile*. This is incredibly important for concurrent programs,
+because runtime errors can be incredibly difficult to reproduce or debug.
+
+Before we get into all the finer details of how this example works, we'll
+need to build up some foundations.
+In the first chapter of this thesis, we establish the basic principles of
+safety and correctness that we're interested in. Since these are ultimately
+vague concepts in a practical setting, we do this by surveying several classic
+errors that all languages must deal with. In the second chapter we identify how
+each kind of error can be understood in terms of *trust* and identify major
+strategies for handling trust issues. In the third section we give a brief
+introduction to Rust, ownership, and their escape hatches. In the fourth chapter
+we analyze several interfaces designed by ourselves and the greater Rust community
+in terms of trust. Finally, in the fifth chapter we examine the limitations of
+ownership.
+
 
 
 
@@ -86,21 +138,26 @@ basis for the infamous Heart Bleed attack, where clients could ask servers
 to send them random chunks of its memory, leaking the server's private key.
 
 Upholding memory safety is a difficult task that must often be approached in
-a holistic manner. Two interfaces that are memory-safe on their own can easily
-be unsound when combined.
+a holistic manner, because two interfaces that are memory-safe on their own can easily
+be unsafe when combined. For instance, dereferencing a pointer that is known
+to be valid is safe, and offsetting a pointer is technically safe (it's just adding integers),
+but being allowed to dereference *and* offset is unsafe.
 
 In addition to the matter of memory safety, there is also the broader problem
 of overall correctness. It is of course impossible for a system to enforce
 that all programs are correct, because it requires the programmer to
-correctly interpret and encode their program's requirements, which
-the system can't possibly evaluate the accuracy of. That said, it is possible
-for a system to understand common errors and make those harder. For instance,
+correctly interpret and encode their program's requirements. Computers can't
+possibly understand if requirements reflect reality, so they must trust the
+programmer in this regard. That said, it is possible for a system to understand
+*common* errors. Where it's impractical to prevent these errors in general,
+a language can orient itself to make these errors less likely. For instance,
 few programs expect integers to overflow, so a system that does more to prevent
-or mitigate integer overflow may be regarded as safer.
+integer overflow or mitigate its consequences may be regarded as safer.
 
-Rust is first and foremost dedicated to being memory-safe at all costs, but is
-also tries to be safer in general. All else equal, if an interface can
-prevent misuse, that's a good thing to have. The question is if all else is
+Rust is fundamentally committed to being memory-safe. If memory safety can
+be violated, this is a critical issue in Rust's design and must be fixed. That said,
+Rust also tries to be safer in general. All else equal, if an interface can
+prevent misuse, it should. The question is if all else is
 *really* equal, or if preventing an error comes at significant ergonomic or
 performance costs.
 
@@ -189,7 +246,7 @@ supposed to.
 Use-after-frees are solved by almost all languages by requiring
 pervasive garbage collection. C and C++ are the two major exceptions, which
 by default don't use any garbage collection mechanisms. In these two languages
-the use-after-free is a rich source of exploits to this day. As we will
+use-after-free is a rich source of exploits to this day. As we will
 see, this is no coincidence. The solution taken by most languages is
 unacceptable to those who traditionally use C or C++.
 
@@ -251,10 +308,10 @@ length isn't even known, making it *impossible* to check.
 
 ## Iterator Invalidation
 
-Iterator invalidation because it's similar to a use-after-free or indexing
-out of bounds, but can require more pervasive checking to guard against. This
-problem occurs when a data structure is mutated while it is being iterated. A
-simple example in C++:
+Iterator invalidation is particularly interesting because it's similar to a
+use-after-free or indexing out of bounds, but can require more pervasive checking
+to guard against. This problem occurs when a data structure is mutated while it
+is being iterated. A simple example in C++:
 
 ```C++
 #include <vector>
@@ -316,7 +373,7 @@ inconsistent by mutating what it intends to represent.
 Memory leaks are unlike any of the other errors above. The other errors are a matter
 of doing a thing that shouldn't have been done. Leaks, on the other hand, are
 failing to do something that *should* have been done. In contrast to a
-use-after-free, a leak occurs when memory is *never* returned to the allocator.
+use-after-free, a memory leak occurs when memory is *never* returned to the allocator.
 We can demonstrate a memory leak by just removing the call to `free` from our
 use-after-free example:
 
@@ -388,9 +445,6 @@ to agree with the length of the array, the allocator needs to agree that
 dereferenced pointers are allocated, and iterators need to agree with the collection
 they iterate. This is the kind of trust we will be focusing on for the bulk of
 this work.
-
-Although we won't be exploring this, trust may also have a probabilistic nature.
-One may expect that inputs are usually small or mostly duplicates.
 
 
 
@@ -469,10 +523,17 @@ is simply the easiest to *implement*. The implementor doesn't need to concern
 themselves with corner cases because they are simply assumed to not occur. This
 in turn gives significant control to the user of the interface, because they don't
 need to worry about the interface checking or mangling inputs. It's up to the user
-to figure out how correct usage is ensured. This control is the greatest strength
-of naivety.
+to figure out how correct usage is ensured. Since the user has the most context,
+they are the best poised to identify when assumptions can or can't be made.
 
-For similar reasons, naive interfaces are also in principle ergonomic to work
+Naive interfaces may also expose lower-level details more freely, on the
+assumption that they will be used correctly. This empowers users to effeciently
+and reliably perform operations that may never have been envisioned by the
+original implementor, or were simply deemed too much work to develop and maintain.
+Control is absolutely the greatest strength of naive interfaces. They empower
+excellent programmers to produce excellent code where it matters.
+
+For similar reasons, naive interfaces are also, in principle, ergonomic to work
 with. In particular one is allowed to try to use the interface in whatever
 manner they please. This enables programs to be transformed in a more continuous
 manner. Intermediate designs may be incorrect in various ways, but if one is
@@ -486,7 +547,7 @@ properties *don't* hold, the program is *undefined*. This naivety can be found i
 relatively small and local details like unchecked indexing, as well as massive
 and pervasive ones like manual memory management.
 
-Undefined Behaviour is the most demonstrates the extreme drawback of naive
+Undefined Behaviour demonstrates the extreme drawback of naive
 interfaces. Breaking C's trust has dire consequences, as the compiler is free to misoptimize the
 program in arbitrary ways, leading to memory corruption bugs and high severity
 vulnerabilities. This is far from an academic concern; exploits deriving from
@@ -529,7 +590,7 @@ the most obvious instance of a paranoid omission, but it's not the most
 interesting. The most interesting omission is the ability to manually free memory,
 which is the omission that all garbage collected languages effectively make.
 Some less popular examples include always-nullable pointers (Haskell, Swift, Rust),
-parallelism (JavaScript), and side-effects (pure functional programming).
+concurrency (JavaScript), and side-effects (pure functional programming).
 
 Static analysis consists of verifying a program has certain properties at
 compile-time. Static typing is the most well-accepted of these practices,
@@ -543,15 +604,16 @@ The primary benefit of paranoid practices is maximum safety. Ideally, a paranoid
 solution doesn't just handle a problem, it *eliminates* that problem. For
 instance, taking away memory freeing completely eliminates the use-after-free,
 because there is *no* "after free" (garbage collection being "only" an
-optimization). Similarly, a lack of parallelism eliminates data races, because
+optimization). Similarly, a lack of concurrency eliminates data races, because
 it's impossible to race. Lints may completely eliminate specific mistakes, or
 simply reduce their probability by catching the common or obvious instances.
 Dependent typing can eliminate indexing out of bounds, by statically proving
 that all indices are in bounds.
 
-The cost of this safety is control. Paranoid practices point to the pervasive
-problems that control leads to, and declare that this is why we can't have nice
-things. It's worth noting that this loss of control does not necessarily imply a
+The cost of this safety is usually control or ergonomics. Paranoid practices point to the pervasive
+problems that unchecked control leads to, and declare that this is why we can't have nice
+things. Certain operations must be forbidden, or require burdensome annotation.
+It's worth noting that a loss of control does not necessarily imply a
 loss in performance. In fact, quite the opposite can be true: an optimizing
 compiler can use the fact that certain things are impossible to produce more
 efficient programs.
@@ -576,7 +638,7 @@ absence of manual free is quite popular because freeing memory is purely annoyin
 book-keeping. Freeing memory has no inherent semantic value, it's just necessary
 to avoid exhausting system resources. The fact that garbage collection just
 magically frees memory for you is pretty popular, as evidenced by its dominance
-of the programming language landscape (C and C++ being the notable defectors).
+of the programming language landscape (C and C++ being the most notable exceptions).
 However some omissions can be too large to bear. Few systems are designed in
 a pure-functional manner.
 
@@ -629,7 +691,7 @@ Regardless of the approach, suspicious practices are a decent compromise. For
 many problems the suspicious solution is much easier to implement, work with,
 and understand than the paranoid solution. Array indexing is perhaps the best
 example of this. It's incredibly simple to have array indexing unconditionally
-check the input against the length of the array. Meanwhile, the paranoid
+check the input against the length of the array. Meanwhile, the obvious paranoid
 solution to this problem requires an integer theorem solver and may require
 significant programmer annotations for complex access patterns. That said,
 paranoid solutions can also be simpler. Why check every dereference for
@@ -883,13 +945,14 @@ fn compute_it(input: &u32) -> &u32 {
 ```
 
 On its own, this is pretty great: no dangling pointers without the need for
-garbage collection! However when combined with an affine type system
+garbage collection! When combined with an affine type system
 we get something even more powerful than garbage collection. For instance, if
 you close a file in a garbage collected language, there is nothing to prevent
 old pointers to the file from continuing to work with it. One must guard for
 this at runtime. In Rust, this is simply not a concern:
 it's statically impossible. Closing the file destroys it, and that means all
-pointers must be gone.
+pointers must be gone. Affinity is therefore a paranoid solution to using things
+in the wrong order.
 
 Unfortunately, this doesn't solve problems like iterator invalidation. When an
 iterator is invalidated, the collection it was pointing to wasn't *destroyed*,
@@ -930,6 +993,48 @@ to move it back into place when the mutable reference is gone (the
 compiler does not actually move the data around when you take a mutable
 reference).
 
+Let's look at some simple examples:
+
+```rust
+let mut data = 0;
+
+{
+    // Allowed to take multiple shared references
+    let data_ref1 = &data;
+    let data_ref2 = &data;
+
+    // Allowed to read through them, and still read the value directly
+    println!("{} {} {}", data_ref1, data_ref2, data);
+
+    // Note allowed to mutate through them (compiler error)
+    // *data_ref1 += 1;
+}
+
+{
+    // Allowed to take one mutable reference
+    let data_mut = &mut data;
+
+    // Allowed to read or write through it
+    println!("{}", data_mut);
+    *data_mut += 1;
+
+    // Allowed to *move* the mutable reference to someone else
+    data_the_second = data_mut;
+
+    // Not allowed to get an aliasing shared reference (compiler error)
+    // let data_ref = &data;
+
+    // Not allowed to get an aliasing mutable reference (compiler error)
+    // let data_mut2 = &mut data;
+
+    // Not allowed to directly access data anymore (compiler error)
+    // println!("{}", data);
+}
+
+// All borrows out of scope, allowed to access data again
+data += 1;
+println!("{}", data);
+```
 
 
 
@@ -1083,7 +1188,7 @@ state can be arbitrarily manipulated by anyone. The abstraction boundary is
 often exactly where privacy kicks in, preventing consumers of the API from doing
 arbitrarily bad things to the state unsafe code relies on.
 
-This thesis focuses primarily on these safe abstractions. A good safe abstraction
+This rest of this thesis focuses primarily on these safe abstractions. A good safe abstraction
 must have many properties:
 
 * Safety: Using the abstraction inappropriately cannot violate Rust's safety guarantees.
@@ -1246,7 +1351,7 @@ interfaces (what's the raw API for searching an ordered map?).
 
 
 
-## Hacking Dependent Types onto Rust
+## Hacking Generativity onto Rust
 
 Given the array iteration example, one might wonder if it's sufficient for the
 array to simply provide the indices. This would be a more composable API with
@@ -1262,7 +1367,8 @@ for i in arr.indices() {
 Unfortunately, this doesn't immediately get us anywhere. This is no different
 than the original example which produced its own iteration sequence. As soon
 as the array loses control of the yielded indices, they are *tainted* and all
-trust is lost. One may consider wrapping the integers in a new type that doesn't
+trust is lost. After all, they're just integers, which can come from anywhere.
+One may consider wrapping the integers in a new type that doesn't
 expose the values to anyone but the array, preventing them from being
 tampered with, but this is still insufficient unless the *origin* of
 these values can be verified. Given two arrays, it mustn't be possible to index
@@ -1291,13 +1397,14 @@ let x = arr[i];
 
 By pure accident, Rust provides enough tools to solve
 this problem. It turns out that lifetimes in conjunction with some other features
-are sufficient to construct a limited form of dependent typing. We won't lie:
-this is an ugly hack, and we don't expect anyone to use it seriously.
-Still, it demonstrates the power of the ownership system.
+are sufficient to introduce *generativity* into the type system. Generativity is
+a limited system that can solve some of the problems usually reserved for
+dependent typing. We won't lie: this is an ugly hack, and we don't expect it
+to see much use. Still, it demonstrates the power of the ownership system.
 
 In order to encode sound unchecked indexing, we need a way for types to talk about
 particular instances of other types. In this case, we specifically need a way
-to talk about the relationship between a particular array, and the indices it's
+to talk about the relationship between a particular array, and the indices it has
 produced. Rust's lifetime system, it turns out, gives us exactly that. Every
 instance of a value that contains a lifetime (e.g. a pointer) is referring to
 some particular region of code. Further, code can require that two lifetimes
@@ -1675,6 +1782,9 @@ interest is Cyclone, Alms, and Vault.
 
 
 
+## C++
+
+
 ## Cyclone
 
 Although Rust was not originally based on Cyclone, the version of Rust that
@@ -1705,7 +1815,7 @@ sufficient to implement regions as a library notion.
 Vault uses linear typing instead of affine typing.
 
 
-[Cyclone]: http://www.cs.umd.edu/projects/cyclone/papers/cyclone-safety.pdf
+[Cyclone]: http://www.cs.umd.edu/projects/PL/cyclone/scp.pdf
 [cyclone-regions]: http://www.cs.umd.edu/projects/cyclone/papers/cyclone-regions.pdf
 [tofte-regions]: https://www.irisa.fr/prive/talpin/papers/ic97.pdf
 [cyclone-existentials]: https://homes.cs.washington.edu/~djg/papers/exists_imp.pdf
