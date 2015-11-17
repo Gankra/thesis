@@ -1351,6 +1351,145 @@ interfaces (what's the raw API for searching an ordered map?).
 
 
 
+# External and Internal Interfaces
+
+It is relatively common to use maps as *accumulators*. The most trivial example
+of this is using a map to count the number of occurrences of each key. Accumulators
+are interesting because special logic must usually be performed when a key is
+seen for the first time. In the case of a key counter, the first time we see a key
+we want to insert the value 1, but each subsequent time we see the same key,
+we want to instead increment the count.
+
+Naively, one may write this as follows:
+
+```rust
+if map.contains(&key) {
+    map[key] += 1;
+} else {
+    map.insert(key, 1);
+}
+```
+
+Those concerned with performance may see an obvious problem with this implementation:
+we're unnecessarily looking up each key twice. Instead we would like to search in the
+map only once, and execute different logic depending on if the key was found or not
+*without* performing the search again.
+
+Before Rust 1.0 was released, there existed a family of functions for doing exactly
+that. For the simple case of a counter, we only need to provide a default value,
+which works well enough:
+
+```rust
+*map.find_or_insert(key, 0) += 1;
+```
+
+However for some kinds of accumulators, the default value might be expensive to
+create. As such, we'd like to avoid constructing it unless we know it's required.
+And so, find_or_insert_with was provided, which took a *function* that computed
+the default value:
+
+```rust
+*map.find_or_insert(key, expensive_default_func) += 1;
+```
+
+However this interface had the problem that it could be difficult to tell which
+case was found. This is where the interface became unwieldy. In order to support
+this, a function that took *two* functions was created, one for each case. However this
+design was problematic because each function
+may want to capture the same affine data by-value. We know this is sound because only
+one of the two functions will be called, but the compiler doesn't understand that.
+So an extra argument was added which would be passed to the function that *was*
+called.
+
+```rust
+map.update_with_or_insert_with(key, capture, compute_default_func, update_existing_func);
+```
+
+While the first APIs seemed quite reasonable, this final API was nightmarish. Worse,
+it didn't even accommodate all the use cases people came up with. Some wanted
+to possible *remove* the key from the map under some conditions, which would necessitate
+a whole new family of update functions. The problem is that this design is what the
+Rust community calls an *internal* interface. Internal interfaces require the client
+to execute *inside* the interface's own code by passing functions that should be
+called at the appropriate time. In some cases, internal interfaces can be convenient
+or even more efficient, but they generally suffer from how little control they give
+the client.
+
+We solved this inflexibility by instead providing an *external* interface. Where
+internal interfaces execute the entire algorithm at once, invoking the client to
+handle important cases, an external interface requires the client to drive the
+execution of the algorithm manually. At each step, the algorithm returns some
+value that summarizes the current state, and exposes relevant operations.
+
+For the accumulator problem, we created the *entry* API. The basic idea of the
+entry API is simple: execute the insertion algorithm up until we determine
+whether the key already existed. Once this is known, take a *snapshot* of
+the algorithm state, and store it in a tagged union with two states: Vacant or
+Occupied. The consumer of the interface must then match on union to determine
+which state the algorithm is in. The Vacant state exposes only one operation:
+`insert`, as this is the only valid operation to perform on an empty entry.
+The Occupied state, on the other hand, exposes the ability to overwrite, remove,
+or take a pointer to the old value.
+
+In its most general form, usage looks as follows:
+
+```rust
+// Search for this key, and capture whether it's in the map or not
+match map.entry(key) {
+    Vacant(e) => {
+        // The key is not in the map, compute the new value
+        let value = expensive_default(capture);
+        e.insert(value);
+    }
+    Occupied(e) => {
+        // The key is in the map, update the value
+        expensive_update(e.get_mut(), capture);
+
+        // Conditionally remove the key from the map altogether
+        if *e.get() == 0 {
+            e.remove();
+        }
+    }
+}
+```
+
+Control flow is now driven by the client of the API, and not the API itself.
+No additional interfaces need to be added to accommodate all the different
+actions that are desired, and no additional lookups are performed.
+
+Of course, this is a significant ergonomic regression for simple cases like
+counting, for which convenience methods were added to the Entry result:
+
+```rust
+*map.entry(key).or_insert(0) += 1;
+```
+
+One may question if we have then gained much if we're still adding some of
+the old interfaces this design was intended to replace, but there is an important
+difference. Before, we were required to add new interfaces to accommodate increasingly
+complex use cases. Now, we are adding new interfaces to accommodate increasingly
+*common* use cases. We believe this to be the more correct way for an interface to
+grow; adding conveniences for idioms, rather than adding nightmares for special cases.
+
+One important question about this interface is whether it's *sound*. After all,
+we're taking a snapshot of the internal state of a collection, and then yielding
+control to the client explicitly to mutate the collection. Indeed, in many languages
+this interface would be dangerous without additional guards, for exactly the same
+reason that iterators are dangerous. And for exactly the same reason that iterators
+can safely be used without any runtime checking, entry can be used without any
+runtime checking: ownership!
+
+An Entry mutably borrows the map it points into, which means that while it
+exists, we know that it has exclusive access to the map. It can trust that the
+algorithmic state it recorded will never become inconsistent. Further, any operation
+that the entry exposes that would invalidate itself (such as inserting into
+a vacant entry or removing from an occupied entry) consumes the entry by-value,
+preventing further use.
+
+
+
+
+
 ## Hacking Generativity onto Rust
 
 Given the array iteration example, one might wonder if it's sufficient for the
