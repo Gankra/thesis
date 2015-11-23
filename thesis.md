@@ -12,41 +12,122 @@ really the focus right now. Trying to figure out the core ideas.
 
 # Abstract
 
-Rust is a new system's programming language developed by Mozilla.
-We provide an original analysis of Rust's design in terms of *trust*,
-show how existing Rust APIs model trust, and discuss several
-novel API designs that enable programmers to model different
-trust constraints.
+Rust is a new programming language developed by Mozilla in response to the fact
+that C and C++ are unsafe, inefficient, and unergonomic -- particularly when
+applied to concurrency. Version 1.0 of Rust was released in May 2015, and appears
+to be performing excellently. Rust code is memory-safe
+by default, faster than C++, easier to maintain, and excels at concurrency.
+
+Yet little analysis exists of the semantics and expressiveness of Rust's type
+system. This thesis focuses on one of the core aspects of Rust's type system:
+*ownership*. Ownership is a system for expressing where and when data lives, and
+where and when data can be mutated. In order to understand ownership and the
+problems it solves, we provide a novel analysis of both in terms of *trust*.
+
+We observe that many classical memory safety errors are the result of some
+code trusting data to be in a particular state that doesn't necessarily hold.
+For instance, indexing out of bounds occurs when one incorrectly trusts an
+index to agree with an array's length. The problem of trust is largely addressed using three
+different strategies: naivety, paranoia, and suspicion. Each of these strategies
+represents a compromise among the competing concerns of control, safety, and
+ergonomics. Briefly, naive interfaces optimize for control by assuming that
+state is correct; paranoid interfaces optimize for safety by statically preventing
+invalid states; and suspicious interfaces optimize for ergonomics by validating
+states at runtime.
+
+We demonstrate how ownership can be used to build efficient and ergonomic
+paranoid interfaces on top of unsafe naive interfaces. For example,
+iterators in Rust provide an interface for indexing into an array
+without bounds checks while being statically immune to invalidation.
+Two of these interfaces, *drain* and *entry*, were developed by us for Rust's
+standard library.
+
+Finally we demonstrate some of the limits of ownership. In particular, we
+explore how the lack of proper linear typing makes it difficult to guarantee
+that desirable operations are performed, such as freeing unused memory or
+repairing invariants. However we provide some tricks for *ensuring* that operations
+are performed (at the cost of ergonomics), or simply mitigating the impact of not
+performing them.
 
 
 
-# Introduction
+# 1. Introduction
 
-Rust is a new programming language with ambitious goals. It intends to be
-faster than C++ while also being safer than Java without sacrificing ergonomics.
-At the same time, Rust does not desire to invent novel systems or analyses
+Modern systems are built upon shaky foundations. Core pieces of computing
+infrastructure like kernels, system utilities, web browsers, and game engines
+are almost invariably written in C and C++. Although these languages provide
+their users the control necessary to satisfy their correctness and performance
+requirements, this control comes at the cost of an
+overwhelming burden for the user. There are hundreds of ways to trigger what
+C and C++ call *Undefined Behaviour*, and a user of these languages must be
+ever-vigilant to avoid them. The price for invoking Undefined Behaviour
+is dire: compilers are allowed to do *absolutely anything at all*.
+
+Modern compilers can and will analyze programs on the assumption that Undefined
+Behaviour is impossible, leading to counter-intuitive results like time travel,
+wherein correct code is removed because subsequent code is Undefined. This
+aggressive misoptimization can turn relatively innocuous bugs like signed integer
+overflow in a debugging printout into a wildly incorrect behaviour. Severe
+vulnerabilities subsequently occur because Undefined Behaviour often leads to
+the program blindly stomping through memory and bypassing checks, providing attackers
+great flexibility.
+
+As a result, our core infrastructure is constantly broken and exploited. Worse,
+C and C++ are holding back systems from being as efficient as they could be.
+These languages were fundamentally designed for single-threaded programming and
+reasoning, having only had concurrency grafted onto their semantics in the last
+5 years. As such, legacy code bases struggle to take advantage of hardware
+parallelism. Even in a single-threaded context,
+the danger of Undefined Behaviour encourages programs to be written
+inefficiently to defend against common errors. For instance it's much safer
+to copy a buffer than have several disjoint locations share pointers to it,
+because unmanaged pointers in C and C++ are wildly unsafe.
+
+In order to address these problems, Mozilla developed the Rust programming language.
+Rust has ambitious goals. It intends to be more efficient than C++ and safer
+than Java without sacrificing ergonomics. Although Rust 1.0 was released less
+than a year ago, early results are incredibly promising. To see this, we need
+look no further than the Servo project, a rewrite of Firefox's core DOM and
+layout engine in Rust.
+
+Preliminary results have found that Servo can
+perform layout two times faster than Firefox on a single thread, and four times
+faster with multiple threads. Servo has also attracted over 300 contributors,
+in spite of the fact that it's written in a language that was barely just
+stabilized, demonstrating the maintainability of Rust applications. There's
+little data on safety and correctness in Servo, but we will see throughout this
+thesis that Rust provides powerful tools for ensuring safety and correctness.
+
+It should be noted that Rust doesn't desire to invent novel systems or analyses,
 because research is hard, slow, and risky. Indeed, to a well-versed programming
-language theorist, Rust is just a collection of well-established tools. However,
-Rust as a whole represents a novel system which merits research. In particular,
-several of Rust's features come together into a system for modeling the
-*ownership* of data, which is surprisingly expressive and ergonomic. This is the
-system that enables Rust to be as safe, fast, and ergonomic as we claim.
+language theorist Rust can be easily summarized as a list of well-studied
+ideas. However, Rust's type system as a whole is greater than the sum
+of the parts. As such, we believe it merits research.
 
-Rust's ownership system is similar to the systems seen in both C++ and Cyclone,
-but deviates significantly enough to warrant fresh analysis. In particular,
+Truly understanding Rust's type system in a rigorous way is a massive
+under-taking that will fill several PhD theses. As such, we will make no effort
+to do this. Instead, we will focus in on what we consider the most interesting
+aspect of Rust: *ownership*. Ownership is an emergent system built on three
+major pieces: *affine types*, *region analysis*, and *privacy*. Together we get
+a system for programmers to manage where and when data lives, and where
+and when it can be mutated in a reasonably ergonomic and intuitive manner.
+
+In particular,
 we observe that many of the kinds of problems Rust seeks to solve boil down
 to issues of *trust* between different pieces of code and the data they share.
 Because Rust's ownership system allows developers to model access to data in
-novel ways, it's possible to model the trust these interfaces require to be
-safe and efficient, without significant ergonomic compromises.
+novel ways, it's possible to cleanly model the trust these interfaces require to be
+safe and efficient.
 
 Ownership particularly shines when one wants to develop concurrent programs,
-and infamously difficult problem. Using Rust's tools for generic programming,
+an infamously difficult problem. Using Rust's tools for generic programming,
 it's possible to build totally safe concurrent algorithms and data structures
 which work with arbitrary data without relying on any particular paradigm like
 message-passing or persistence. Rust's crowning jewel in this regard is the
 ability to safely have child threads mutate data on a parent thread's stack
-without any extra synchronization, as this program demonstrates:
+without any unnecessary synchronization, as the following program demonstrates. (If you
+don't understand Rust syntax, a brief introduction is provided in a later
+section. For now, trust us that this is a super cool example)
 
 ```rust
 [dependencies]
@@ -64,7 +145,6 @@ fn main() {
 
         // Get pointers to each element in the array
         for x in &mut array {
-
             // Spawn a thread to increment this element of the array
             scope.spawn(move || {
                 *x += 1;
@@ -78,32 +158,37 @@ fn main() {
 }
 ```
 
-The most amazing part of this program is that it's based entirely on a
-third-party library (crossbeam). Rust does not require threads to
-be modeled as part of the language or standard library in order for these
-powerful safe abstractions to be constructed. Any attempt to share non-threadsafe
-data with the scoped threads, give the same pointer to two threads, keep a pointer
-for too long, or mutate the array during iteration won't just fail to work, it
-will *fail to compile*. This is incredibly important for concurrent programs,
-because runtime errors can be incredibly difficult to reproduce or debug.
+The most amazing part of this program is that it's based entirely on a third-
+party library (crossbeam). Rust does not require threads to be modeled as part
+of the language or standard library in order for these powerful safe
+abstractions to be constructed. Any attempt to share non-threadsafe data with
+the scoped threads, give the same pointer to two threads, keep a pointer for too
+long, or access the array while the threads are running won't just fail to work,
+it will *fail to compile*. The fact that misuse is a static error is incredibly
+important for concurrent programs, because runtime errors can be incredibly
+difficult to reproduce or debug.
 
-Before we get into all the finer details of how this example works, we'll
-need to build up some foundations.
-In the first chapter of this thesis, we establish the basic principles of
-safety and correctness that we're interested in. Since these are ultimately
-vague concepts in a practical setting, we do this by surveying several classic
-errors that all languages must deal with. In the second chapter we identify how
-each kind of error can be understood in terms of *trust* and identify major
-strategies for handling trust issues. In the third section we give a brief
-introduction to Rust, ownership, and their escape hatches. In the fourth chapter
-we analyze several interfaces designed by ourselves and the greater Rust community
-in terms of trust. Finally, in the fifth chapter we examine the limitations of
-ownership.
+Before we get into all the finer details of how this example works, we'll need
+to build up some foundations. In chapter 2, we establish
+the basic principles of safety and correctness that we're interested in. Since
+these are ultimately vague concepts in a practical setting, we do this by
+surveying several classic errors that all languages must deal with. In chapter 3
+we identify how each kind of error can be understood in terms of
+*trust* and the major strategies for handling trust issues. In chapter 4
+we give a brief introduction to Rust's syntax, semantics, and ownership. In
+chapter 5 we analyze several interfaces designed by ourselves and the greater
+Rust community in terms of trust. In chapter 6 we we examine the limitations of
+ownership. Finally, in chapter 7 we briefly survey how ownership in Rust compares
+to similar systems in other languages.
 
 
 
 
-# Safety and Correctness
+
+
+
+
+# 2. Safety and Correctness
 
 Programming is hard. \[citation needed\]
 
@@ -423,7 +508,9 @@ to programs behaving incorrectly, instead of just poorly.
 
 
 
-# Trust
+
+
+# 3. Trust
 
 We believe that the three memory-safety errors we described in the previous
 section, and many more like them, all boil down to a single issue: data trust.
@@ -723,7 +810,7 @@ some cases. Bounds checks in particular can be completely eliminated in common c
 
 
 
-# Ownership
+# 4. Rust and Ownership
 
 Rust tries to be a practical language. It understands that each perspective has
 advantages and drawbacks, and tries to pick the best tool for each job. From each
@@ -733,7 +820,7 @@ C and C++ are used today, and being able to manually manage memory is a critical
 aspect of that. From the paranoid perspective, we embrace that completely
 eliminating errors is great. Humans are fallible and get tired, but a good compiler
 never rests and always has our back. From the suspicious perspective, we embrace
-that compromises must be made for ergonomics and safety.
+that compromises must be made for ergonomics.
 
 Part of Rust's solution is then simply taking our favourite solutions for
 each specific problem: static types, runtime bounds checks, no nulls, wrapping
@@ -744,6 +831,9 @@ and controlling where and when mutation can occur. These aspects are governed by
 two major features: affine types and regions.
 
 
+
+
+## TODO: intro to syntax
 
 
 
@@ -1219,7 +1309,7 @@ programming environment that is safe, efficient, and usable.
 
 
 
-# Designing APIs for Trust
+# 5. Designing APIs for Trust
 
 It has been our experience that almost everything you want to express at a high level
 can be safely, efficiently, and usably expressed in an ownership-oriented system.
@@ -1351,7 +1441,7 @@ interfaces (what's the raw API for searching an ordered map?).
 
 
 
-# External and Internal Interfaces
+## External and Internal Interfaces
 
 It is relatively common to use maps as *accumulators*. The most trivial example
 of this is using a map to count the number of occurrences of each key. Accumulators
@@ -1483,7 +1573,7 @@ An Entry mutably borrows the map it points into, which means that while it
 exists, we know that it has exclusive access to the map. It can trust that the
 algorithmic state it recorded will never become inconsistent. Further, any operation
 that the entry exposes that would invalidate itself (such as inserting into
-a vacant entry or removing from an occupied entry) consumes the entry by-value,
+a vacant entry or removing from an occupied entry) consumes itself by-value,
 preventing further use.
 
 
@@ -1727,38 +1817,26 @@ model particularly complex constraints.
 
 
 
-# Limitations of Ownership
 
-We've seen several problems that ownership allows us to cleanly model several
+
+
+
+
+
+# 6. Limitations of Ownership
+
+TODO: this section needs to cleaned up and refactored
+
+We've seen that ownership allows us to cleanly model several
 problems, preventing incorrect usage without runtime overhead. In particular,
 ownership is very good at preventing the use-after and view-invalidation
 classes of errors. This is because ownership's primary role is to prevent data
 from being accessed at inappropriate times. However ownership is unable to
-properly model the opposite problem: *requiring* data be accessed.
+properly model the opposite problem: *requiring* data be accessed, as is the
+case for leaks.
 
-Perhaps the most famous class of errors that this covers is *leaks*. Leaks occur when
-a program acquires resources but fails to release them when they're no longer
-needed. Memory leaks are the most infamous, but one also easily leak file
-descriptors, threads, connections, and more. Leaks are a particularly
-pernicious bug because they generally don't immediately affect the behaviour
-of a program. Leaks may be completely irrelevant, or even desirable, for
-short-lived programs. However leaks may cause long-lived programs to mysteriously
-crash at seemingly arbitrary times.
-
-Leaks aren't well-modeled by ownership because they occur when a program *doesn't*
-do something: freeing memory, closing a file, terminating a thread, and so on.
-Unfortunately, the nature of leaks makes them much harder to define, and therefore
-eliminate. Most would generally agree that completely forgetting about an
-address in memory without freeing it is a leak. However simply holding onto a
-value that will never again be used is arguably also a leak. In extreme cases,
-simply failing to throttle usage may be regarded as a leak.
-
-The classic leak is something that is fairly well-defined and approachable,
-but the more advanced kinds of leak are something we consider impractical to
-address, due to their reliance on arbitrary program semantics.
-
-The ability to just drop a value on the ground and forget about it is an
-explicit feature of affine types, which say values can be used *at most* once.
+Leaks aren't well-modeled by ownership because Rust is based on *affine*
+semantics, which allow us to forget about values at any time.
 In order to encode that a value must be properly consumed, we need to be able
 to express that a value must be used *exactly* once. Types with this property
 are said to be *linear*.
@@ -1774,7 +1852,8 @@ to have a type that is allocated using a custom allocator, but does not store
 a pointer to that allocator. The type therefore has insufficient information
 to clean itself up, requiring the allocator be passed to it. A more robust linearity
 system would allow us to encode this by requiring the destructor be explicitly invoked with
-the allocator as an argument.
+the allocator as an argument. Destructors also can't return anything to indicate
+success or failure.
 
 That said, destructors do a great job for many types. Collections and files
 have a single "natural" final operation that requires no additional context.
@@ -1785,55 +1864,51 @@ on the ground, it can always do this knowing any linear requirements will be
 satisfied by the destructor. Destructors provide a uniform interface with no
 context required precisely *because* they aren't general.
 
-Unfortunately, ensuring that code *does* execute is a bit of a nastier problem.
+Unfortunately, ensuring that destructors execute is a nasty problem.
 At the limit, hardware can fail and programs can abort. We just need to live
 with that fact. For most resources this is actually fine; either the resources are
 rendered irrelevant by the program ending, or the operating system will automatically
 clean them all up itself.
 
-However even accepting those circumstances, strict
+Even accepting those circumstances, strict
 linearity is a bit of a pain. In particular, it is desirable to be able to
-create reference-counted cycles of types with destructors. If all references to
-this cycle are lost, then it will still keep itself alive, leaking the destructors
+create reference-counted cycles of types with destructors. Even if all references to
+such a cycle are lost, it will keep itself alive, leaking the destructors
 themselves. Further, it is sometimes desirable to manually prevent a destructor
-from running, particularly when decomposing it into its constituent parts. For
-instance, one may wish to downgrade a pointer that knows it lives on the heap
+from running, particularly when decomposing a value into its constituent parts. For
+instance, one may wish to downgrade a pointer that would normally free its allocation
 to a raw pointer, perhaps to pass to a C API.
 
 There are various solutions to this problem, but most languages that include
 destructors (C++, Rust, D, C#, Java, ...) generally accept that sometimes
-destructors (AKA finalizers) won't run. They're convenient and generally
+they won't run. They're convenient and generally
 reliable, but if one *really* needs something to happen, they can't always be
 relied on. For Rust in particular, one can't pass a value with a destructor to
-an arbitrary third-party, and rely on the destructor to ever be called, even if
+an arbitrary third-party and rely on the destructor to be called, even if
 the borrows it held have expired.
 
 As a concrete example, we can consider Rust's `drain` interface. `Drain` is a
 utility for efficiently performing bulk removal from the middle of a growable
 array. Arrays require their elements to be stored contiguously, so removing
 from the middle of one generally requires the elements after it to be
-back-shifted to fill the hole. Doing this repeatedly is incredibly expensive,
-so it's desirable to be able to defer the backshift until we are done removing
+shifted back to fill the hole. Doing this repeatedly is incredibly expensive,
+so it's desirable to be able to defer the shift until we are done removing
 elements. Doing this means the array is in an unsound state while the
-removals are happening.
+removals are happening. We don't want this state to be observable by the client.
 
-One solution to this problem is to require the removals to be done in an
-atomic fashion. For instance, if `drain` required a destination buffer to be
-passed to it, then it could copy all the elements at once and back-shift at the
-end of the function call. To the caller of `drain`, the array would appear to
-always be in a consistent state. However such an interface is another example
-of taking too much control from the user. They may not want to copy the elements
-anywhere, but instead want to destroy them right away.
+One solution to this problem is to require the caller to pass in a
+destination buffer for all the elements that will be removed. Then `drain` can
+just run to completion without ever yielding control to the client. Unfortunately,
+this is quite inflexible.
 
-Instead, `drain` is implemented as an iterator. Elements are removed one at a
-time, allowing the user to decide what is done with them without any need for
-temporary allocations. However this means that we need to worry about the user
-observing this inconsistent state, and how to clean it up. At first blush, the
-problem seems trivial for Rust to solve. Drain is mutating the array, so it
-contains a mutable reference to the array. That means the array is inaccessible
-through any interface but the iterator itself while it exists. The backshift can
-then be done in the iterator's destructor, which is exactly when the borrow it
-holds expires. Perfect!
+To get more control we once again created an external interface, implementing
+`drain` as an iterator. Elements are removed one at a time, allowing the user to
+decide what is done with them without any need for allocating a buffer. At first
+blush, the safety of this interface seems trivially solved by ownership. Drain is mutating the
+array, so it contains a mutable reference to the array. That means the array is
+inaccessible through any interface but the iterator while it exists. The
+shifting can then be done in the iterator's destructor, which is exactly when
+the borrow it holds expires. Perfect!
 
 ```rust
 // A growable array with 5 numbers
@@ -1846,7 +1921,7 @@ for x in arr.drain(1..3) {
     // arr is statically inaccessible here
     println!("{}", x);
 }
-// backshifting is performed once here
+// backshifting is performed here
 // arr is now accessible again
 
 // 1 and 2 are now gone
@@ -1859,10 +1934,10 @@ destructor, but since one can violate memory safety by accessing these empty
 indices, we cannot tolerate the possibility.
 
 Thankfully, all is not lost. The solution to our problem is in fact quite simple.
-Rather than relying on the destructor to put the array in a *sound* state,
-we will put the array into an incorrect but otherwise sound state, and rely on
-the destructor to put the array into the correct state. We call this strategy
-*poisoning*. If the user of our interface prevents the destructor from running,
+Rather than relying on the destructor to put the array in a sound state,
+we will *start* the drain by putting the array into an incorrect but otherwise
+sound state, and rely on the destructor to put the array into the correct state.
+If the user of our interface prevents the destructor from running,
 they'll get a poisoned array which will probably cause their program to behave
 incorrectly, but be unable to violate memory safety.
 
@@ -1911,17 +1986,23 @@ common cases.
 
 
 
-# Related Work
+# 7. Related Work
 
 TODO: this whole section?
 
 As has been noted, Rust's constituent parts aren't unique. Other languages have
 consequently been built on the same or similar foundations. Of particular
-interest is Cyclone, Alms, and Vault.
+interest is C++, Cyclone, Alms, and Vault.
 
 
 
 ## C++
+
+* Move semantics suck, need to mark the old value as "moved", access still permitted (unique_ptr)
+* Unmanaged pointers are wildly unsafe; safe abstractions can't expose them
+* C++ core guidelines (basically a different language, unproven, adhoc)
+
+
 
 
 ## Cyclone
@@ -1949,11 +2030,30 @@ sufficient to implement regions as a library notion.
 
 
 
+
 ## Vault
 
 Vault uses linear typing instead of affine typing.
 
 
+
+
+
+
+
+
+# 8. Conclusion
+
+TODO: Say what I said
+
+
+
+
+
+
+
+
+[1.0]: http://blog.rust-lang.org/2015/05/15/Rust-1.0.html
 [Cyclone]: http://www.cs.umd.edu/projects/PL/cyclone/scp.pdf
 [cyclone-regions]: http://www.cs.umd.edu/projects/cyclone/papers/cyclone-regions.pdf
 [tofte-regions]: https://www.irisa.fr/prive/talpin/papers/ic97.pdf
@@ -1967,4 +2067,5 @@ Vault uses linear typing instead of affine typing.
 [no-array-bounds]: http://www.cs.bu.edu/~hwxi/academic/papers/pldi98.ps
 [alms]: http://users.eecs.northwestern.edu/~jesse/pubs/dissertation/tov-dissertation-screen.pdf
 [jdk-iter]: http://hg.openjdk.java.net/jdk7/jdk7/jdk/file/00cd9dc3c2b5/src/share/classes/java/util/ArrayList.java#l771
+[time travel]: http://blogs.msdn.com/b/oldnewthing/archive/2014/06/27/10537746.aspx
 [coverity]: http://cacm.acm.org/magazines/2010/2/69354-a-few-billion-lines-of-code-later/fulltext
