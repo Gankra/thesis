@@ -1825,7 +1825,9 @@ model particularly complex constraints.
 
 # 6. Limitations of Ownership
 
-TODO: this section needs to cleaned up and refactored
+TODO: this section needs to cleaned up and refactored (bitrot)
+TODO: talk about thread::scoped?
+TODO:
 
 We've seen that ownership allows us to cleanly model several
 problems, preventing incorrect usage without runtime overhead. In particular,
@@ -1988,7 +1990,7 @@ common cases.
 
 # 7. Related Work
 
-TODO: this whole section?
+TODO: this whole section
 
 As has been noted, Rust's constituent parts aren't unique. Other languages have
 consequently been built on the same or similar foundations. Of particular
