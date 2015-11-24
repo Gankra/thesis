@@ -1,0 +1,53 @@
+%*******************************************************
+% Abstract
+%*******************************************************
+%\renewcommand{\abstractname}{Abstract}
+%\pdfbookmark[1]{Abstract}{Abstract}
+\phantomsection
+\addcontentsline{toc}{chapter}{\tocEntry{Abstract}}
+\begingroup
+\let\clearpage\relax
+\let\cleardoublepage\relax
+\let\cleardoublepage\relax
+
+\chapter*{Abstract}
+Rust is a new programming language developed by Mozilla in response to the fact
+that C and C++ are unsafe, inefficient, and unergonomic -- particularly when
+applied to concurrency. Version 1.0 of Rust was released in May 2015, and appears
+to be performing excellently. Rust code is memory-safe
+by default, faster than C++, easier to maintain, and excels at concurrency.
+
+Yet little analysis exists of the semantics and expressiveness of Rust's type
+system. This thesis focuses on one of the core aspects of Rust's type system:
+\emph{ownership}. Ownership is a system for expressing where and when data lives, and
+where and when data can be mutated. In order to understand ownership and the
+problems it solves, we provide a novel analysis of both in terms of \emph{trust}.
+
+We observe that many classical memory safety errors are the result of some
+code trusting data to be in a particular state that doesn't necessarily hold.
+For instance, indexing out of bounds occurs when one incorrectly trusts an
+index to agree with an array's length. The problem of trust is largely addressed using three
+different strategies: naivety, paranoia, and suspicion. Each of these strategies
+represents a compromise among the competing concerns of control, safety, and
+ergonomics. Briefly, naive interfaces optimize for control by assuming that
+state is correct; paranoid interfaces optimize for safety by statically preventing
+invalid states; and suspicious interfaces optimize for ergonomics by validating
+states at runtime.
+
+We demonstrate how ownership can be used to build efficient and ergonomic
+paranoid interfaces on top of unsafe naive interfaces. For example,
+iterators in Rust provide an interface for indexing into an array
+without bounds checks while being statically immune to invalidation.
+Two of these interfaces, \emph{drain} and \emph{entry}, were developed by us for Rust's
+standard library.
+
+Finally we demonstrate some of the limits of ownership. In particular, we
+explore how the lack of proper linear typing makes it difficult to guarantee
+that desirable operations are performed, such as freeing unused memory or
+repairing invariants. However we provide some tricks for \emph{ensuring} that operations
+are performed (at the cost of ergonomics), or simply mitigating the impact of not
+performing them.
+
+\endgroup
+
+\vfill

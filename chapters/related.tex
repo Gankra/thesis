@@ -1,0 +1,60 @@
+\chapter{Related Work}
+\label{ch:related}
+
+Since Rust's model of ownership is built up of well-establised parts, it should
+surprise no one to learn that other languages have been built with similar
+designs. Of particular interest is C++, Cyclone, and Alms.
+
+
+\section{Cyclone}
+
+The Cyclone progamming language is easily the closest relative to Rust. Cyclone
+was a project with similar goals to Rust: make a language which can do all the
+low-level stuff normally reserved for C and C++, but make it safe. However, while
+Rust was designed as a completely new language Cyclone was designed to be a
+minimal addition on top of C. The ideal of Cyclone was that existing C code
+bases could be migrated to it relatively painlessly. This ultimately limited
+Cyclone
+
+Although Rust was not originally based on Cyclone, the version of Rust that
+was stabilized can be seen as the direct descendant of the final version of
+Cyclone. Most notably, the region analysis employed by Rust and Cyclone for
+borrowed pointers is (as far as we can tell) identical. Where the two deviate
+is in affine typing. Since Cyclone intended to be a drop-in replacement for C,
+it was based largely around copy semantics, and not move semantics. However
+near the end of its development Cyclone introduced affine unique and
+reference-counted pointers in order to enable more flexible memory management.
+These types were built into the language, and no mechanism was provided to mark
+other types as affine. As such, affine typing couldn't be used as a mechanism to
+manage access to data, because all other data was still freely copyable. Instead,
+affine typing was used exclusively for allocation management.
+
+
+
+\section{C++}
+
+* Move semantics suck, need to mark the old value as ``moved'', access still permitted (uniqueptr)
+* Unmanaged pointers are wildly unsafe; safe abstractions can't expose them
+* C++ core guidelines (basically a different language, unproven, adhoc)
+
+
+
+
+
+
+
+
+\section{Alms}
+
+Alms has affine types, but exposes a more advanced mechanism than regions. It's
+sufficient to implement regions as a library notion.
+
+
+
+
+\section{Vault}
+
+Vault uses linear typing instead of affine typing.
+
+
+

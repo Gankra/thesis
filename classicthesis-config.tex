@@ -1,0 +1,438 @@
+
+\usepackage{minted}
+\usepackage{hyperref}
+
+
+% ****************************************************************************************************
+% classicthesis-config.tex
+% formerly known as loadpackages.sty, classicthesis-ldpkg.sty, and classicthesis-preamble.sty
+% Use it at the beginning of your ClassicThesis.tex, or as a LaTeX Preamble
+% in your ClassicThesis.{tex,lyx} with \input{classicthesis-config}
+% ****************************************************************************************************
+% If you like the classicthesis, then I would appreciate a postcard.
+% My address can be found in the file ClassicThesis.pdf. A collection
+% of the postcards I received so far is available online at
+% http://postcards.miede.de
+% ****************************************************************************************************
+
+% ****************************************************************************************************
+% 1. Configure classicthesis for your needs here, e.g., remove "drafting" below
+% in order to deactivate the time-stamp on the pages
+% ****************************************************************************************************
+\PassOptionsToPackage{eulerchapternumbers,%listings,%drafting,%
+				 pdfspacing,floatperchapter,%linedheaders,%
+				 subfig,%beramono,
+                 eulermath,
+                 parts}{classicthesis}
+% ********************************************************************
+% Available options for classicthesis.sty
+% (see ClassicThesis.pdf for more information):
+% drafting
+% parts nochapters linedheaders
+% eulerchapternumbers beramono eulermath pdfspacing minionprospacing
+% tocaligned dottedtoc manychapters
+% listings floatperchapter subfig
+% ********************************************************************
+
+% ********************************************************************
+% Triggers for this config
+% ********************************************************************
+\usepackage{ifthen}
+\newboolean{enable-backrefs} % enable backrefs in the bibliography
+\setboolean{enable-backrefs}{false} % true false
+% ****************************************************************************************************
+
+
+% ****************************************************************************************************
+% 2. Personal data and user ad-hoc commands
+% ****************************************************************************************************
+\newcommand{\myTitle}{You Can't Spell Trust Without Rust\xspace}
+\newcommand{\mySubtitle}{}
+\newcommand{\myDegree}{Master's Thesis\xspace}
+\newcommand{\myName}{Alexis Beingessner\xspace}
+%\newcommand{\myProf}{Put name here\xspace}
+%\newcommand{\myOtherProf}{Put name here\xspace}
+%\newcommand{\mySupervisor}{Prosenjit Bose, \xspace}
+%\newcommand{\myFaculty}{Put data here\xspace}
+\newcommand{\myDepartment}{School of Computer Science\xspace}
+\newcommand{\myUni}{Carleton University\xspace}
+\newcommand{\myLocation}{Ottawa\xspace}
+\newcommand{\myTime}{2015\xspace}
+\newcommand{\myVersion}{version 4.1\xspace} % classicthesis.sty version
+
+% Better-looking itemize and enumerate environments?
+\newenvironment{shortitemize}
+    {\begin{itemize}}%\setlength{\itemsep}{-5pt}} % Try the default first
+    {\end{itemize}}
+\newenvironment{shortenumerate}
+    {\begin{enumerate}}%\setlength{\itemsep}{-5pt}}
+    {\end{enumerate}}
+
+% ********************************************************************
+% Setup, finetuning, and useful commands
+% ********************************************************************
+\newcounter{dummy} % necessary for correct hyperlinks (to index, bib, etc.)
+\newlength{\abcd} % for ab..z string length calculation
+\providecommand{\mLyX}{L\kern-.1667em\lower.25em\hbox{Y}\kern-.125emX\@}
+\newcommand{\ie}{i.\,e.}
+\newcommand{\Ie}{I.\,e.}
+\newcommand{\eg}{e.\,g.}
+\newcommand{\Eg}{E.\,g.}
+% ****************************************************************************************************
+
+
+% ****************************************************************************************************
+% 3. Loading some handy packages
+% ****************************************************************************************************
+% ********************************************************************
+% Packages with options that might require adjustments
+% ********************************************************************
+\PassOptionsToPackage{utf8}{inputenc}	% latin9 (ISO-8859-9) = latin1+"Euro sign"
+ \usepackage{inputenc}
+
+% Build a bibliography per chapter, instead of for the whole thesis
+% \usepackage{chapterbib}
+
+\PassOptionsToPackage{canadian}{babel}   % change this to your language(s)
+% Spanish languages need extra options in order to work with this template
+%\PassOptionsToPackage{spanish,es-lcroman}{babel}
+ \usepackage{babel}
+
+\PassOptionsToPackage{square,numbers}{natbib}
+ \usepackage{natbib}
+
+\PassOptionsToPackage{fleqn}{amsmath}		% math environments and more by the AMS
+ \usepackage{amsmath}
+
+% Define theorem and proof environments
+\usepackage{amssymb}
+\usepackage{amsthm}
+
+% Custom theorem style to replace standard bold theorem names by small caps
+\newtheoremstyle{caps}
+  {\topsep}   % ABOVESPACE
+  {\topsep}   % BELOWSPACE
+  {\itshape}  % BODYFONT
+  {0pt}       % INDENT (empty value is the same as 0pt)
+  {}          % HEADFONT
+  {.}         % HEADPUNCT
+  {5pt plus 1pt minus 1pt} % HEADSPACE
+  {\spacedlowsmallcaps{\thmname{#1}\thmnumber{ #2}}\thmnote{ (#3)}} % CUSTOM-HEAD-SPEC
+
+\theoremstyle{caps}
+\newtheorem{definition}{Definition}
+\newtheorem{theorem}[definition]{Theorem}
+\newtheorem{lemma}[definition]{Lemma}
+\newtheorem{observation}[definition]{Observation}
+\newtheorem{corollary}[definition]{Corollary}
+\newtheorem{conjecture}{Conjecture}
+\newtheorem{problem}{Open Problem}
+
+\newtheoremstyle{algo}
+  {\topsep}   % ABOVESPACE
+  {\topsep}   % BELOWSPACE
+  {\upshape}  % BODYFONT
+  {0pt}       % INDENT (empty value is the same as 0pt)
+  {}          % HEADFONT
+  {}          % HEADPUNCT
+  {\newline}  % HEADSPACE
+  {\spacedlowsmallcaps{\thmname{#1}\thmnumber{ #2}}\thmnote{ (#3)}} % CUSTOM-HEAD-SPEC
+
+\theoremstyle{algo}
+\newtheorem{algorithm}{Algorithm}
+
+%\newtheorem{defin}{Definition}
+%  \newenvironment{definition}{\begin{defin} \normalfont \slshape }{\end{defin}}
+%\newtheorem{theo}[defin]{Theorem}
+%  \newenvironment{theorem}{\begin{theo} \normalfont \slshape }{\end{theo}}
+%\newtheorem{lem}[defin]{Lemma}
+%  \newenvironment{lemma}{\begin{lem} \normalfont \slshape }{\end{lem}}
+%\newtheorem{obs}[defin]{Observation}
+%  \newenvironment{observation}{\begin{obs} \normalfont \slshape }{\end{obs}}
+%\newtheorem{coro}[defin]{Corollary}
+%  \newenvironment{corollary}{\begin{coro} \normalfont \slshape }{\end{coro}}
+%\newtheorem{pro}{Open Problem}
+%  \newenvironment{problem}{\begin{pro} \normalfont \slshape }{\end{pro}}
+
+\newenvironment{proofof}[1]{\textit{Proof of #1.}}{\hfill$\Box$}
+
+\numberwithin{definition}{chapter} % Theorem 3 in chapter 2 gets number 2.3
+\numberwithin{figure}{chapter} % Figure 3 in chapter 2 gets number 2.3
+
+% ********************************************************************
+% General useful packages
+% ********************************************************************
+\PassOptionsToPackage{T1}{fontenc} % T2A for cyrillics
+	\usepackage{fontenc}
+\usepackage[full]{textcomp} % fix warning with missing font shapes
+\usepackage{scrhack} % fix warnings when using KOMA with listings package
+\usepackage{xspace} % to get the spacing after macros right
+\usepackage{mparhack} % get marginpar right
+\usepackage{fixltx2e} % fixes some LaTeX stuff
+\PassOptionsToPackage{printonlyused,smaller}{acronym}
+	\usepackage{acronym} % nice macros for handling all acronyms in the thesis
+%\renewcommand*{\acsfont}[1]{\textssc{#1}} % for MinionPro
+%\renewcommand{\bflabel}[1]{{#1}\hfill} % fix the list of acronyms
+% ****************************************************************************************************
+
+
+% ****************************************************************************************************
+% 4. Setup floats: tables, (sub)figures, and captions
+% ****************************************************************************************************
+\usepackage{tabularx} % better tables
+	\setlength{\extrarowheight}{3pt} % increase table row height
+\newcommand{\tableheadline}[1]{\multicolumn{1}{c}{\spacedlowsmallcaps{#1}}}
+\usepackage{longtable} % tables that span multiple pages
+\newcommand{\myfloatalign}{\centering} % to be used with each float for alignment
+\usepackage{caption}
+\captionsetup{format=hang,font=small}
+\usepackage{subcaption}
+
+\usepackage{wrapfig}
+% ****************************************************************************************************
+
+
+% ****************************************************************************************************
+% 5. Setup code listings
+% ****************************************************************************************************
+\usepackage{listings}
+%\lstset{emph={trueIndex,root},emphstyle=\color{BlueViolet}}%\underbar} % for special keywords
+\lstset{language=[LaTeX]Tex,%C++,
+    keywordstyle=\color{RoyalBlue},%\bfseries,
+    basicstyle=\small\ttfamily,
+    %identifierstyle=\color{NavyBlue},
+    commentstyle=\color{Green}\ttfamily,
+    stringstyle=\rmfamily,
+    numbers=none,%left,%
+    numberstyle=\scriptsize,%\tiny
+    stepnumber=5,
+    numbersep=8pt,
+    showstringspaces=false,
+    breaklines=true,
+    frameround=ftff,
+    frame=single,
+    belowcaptionskip=.75\baselineskip
+    %frame=L
+}
+% ****************************************************************************************************
+
+
+% ****************************************************************************************************
+% 6. PDFLaTeX, hyperreferences and citation backreferences
+% ****************************************************************************************************
+% ********************************************************************
+% Using PDFLaTeX
+% ********************************************************************
+\PassOptionsToPackage{pdftex,hyperfootnotes=false,pdfpagelabels}{hyperref}
+	\usepackage{hyperref}  % backref linktocpage pagebackref
+\pdfcompresslevel=9
+\pdfadjustspacing=1
+\PassOptionsToPackage{pdftex}{graphicx}
+	\usepackage{graphicx}
+
+\graphicspath{{figures/}}
+
+% ********************************************************************
+% Setup the style of the backrefs from the bibliography
+% (translate the options to any language you use)
+% ********************************************************************
+\newcommand{\backrefnotcitedstring}{\relax}%(Not cited.)
+\newcommand{\backrefcitedsinglestring}[1]{(Cited on page~#1.)}
+\newcommand{\backrefcitedmultistring}[1]{(Cited on pages~#1.)}
+\ifthenelse{\boolean{enable-backrefs}}%
+{%
+		\PassOptionsToPackage{hyperpageref}{backref}
+		\usepackage{backref} % to be loaded after hyperref package
+		   \renewcommand{\backreftwosep}{ and~} % separate 2 pages
+		   \renewcommand{\backreflastsep}{, and~} % separate last of longer list
+		   \renewcommand*{\backref}[1]{}  % disable standard
+		   \renewcommand*{\backrefalt}[4]{% detailed backref
+		      \ifcase #1 %
+		         \backrefnotcitedstring%
+		      \or%
+		         \backrefcitedsinglestring{#2}%
+		      \else%
+		         \backrefcitedmultistring{#2}%
+		      \fi}%
+}{\relax}
+
+% ********************************************************************
+% Hyperreferences
+% ********************************************************************
+\hypersetup{%
+    %draft,	% = no hyperlinking at all (useful in b/w printouts)
+    colorlinks=true, linktocpage=true, pdfstartpage=3, pdfstartview=FitV,%
+    % uncomment the following line if you want to have black links (e.g., for printing)
+    %colorlinks=false, linktocpage=false, pdfborder={0 0 0}, pdfstartpage=3, pdfstartview=FitV,%
+    breaklinks=true, pdfpagemode=UseNone, pageanchor=true, pdfpagemode=UseOutlines,%
+    plainpages=false, bookmarksnumbered, bookmarksopen=true, bookmarksopenlevel=1,%
+    hypertexnames=true, pdfhighlight=/O,%nesting=true,%frenchlinks,%
+    urlcolor=webbrown, linkcolor=RoyalBlue, citecolor=webgreen, %pagecolor=RoyalBlue,%
+    %urlcolor=Black, linkcolor=Black, citecolor=Black, %pagecolor=Black,%
+    pdftitle={\myTitle},%
+    pdfauthor={\textcopyright\ 2015 \myName},%
+    pdfsubject={},%
+    pdfkeywords={},%
+    pdfcreator={pdfLaTeX},%
+    pdfproducer={LaTeX with hyperref and classicthesis}%
+}
+
+% ********************************************************************
+% Setup autoreferences
+% ********************************************************************
+% There are some issues regarding autorefnames
+% http://www.ureader.de/msg/136221647.aspx
+% http://www.tex.ac.uk/cgi-bin/texfaq2html?label=latexwords
+% you have to redefine the makros for the
+% language you use, e.g., american, ngerman
+% (as chosen when loading babel/AtBeginDocument)
+% ********************************************************************
+\makeatletter
+\@ifpackageloaded{babel}%
+    {%
+       \addto\extrasamerican{%
+					\renewcommand*{\figureautorefname}{Figure}%
+					\renewcommand*{\tableautorefname}{Table}%
+					\renewcommand*{\partautorefname}{Part}%
+					\renewcommand*{\chapterautorefname}{Chapter}%
+					\renewcommand*{\sectionautorefname}{Section}%
+					\renewcommand*{\subsectionautorefname}{Section}%
+					\renewcommand*{\subsubsectionautorefname}{Section}%
+				}%
+       \addto\extrasngerman{%
+					\renewcommand*{\paragraphautorefname}{Absatz}%
+					\renewcommand*{\subparagraphautorefname}{Unterabsatz}%
+					\renewcommand*{\footnoteautorefname}{Fu\"snote}%
+					\renewcommand*{\FancyVerbLineautorefname}{Zeile}%
+					\renewcommand*{\theoremautorefname}{Theorem}%
+					\renewcommand*{\appendixautorefname}{Anhang}%
+					\renewcommand*{\equationautorefname}{Gleichung}%
+					\renewcommand*{\itemautorefname}{Punkt}%
+				}%
+			% Fix to getting autorefs for subfigures right (thanks to Belinda Vogt for changing the definition)
+			\providecommand{\subfigureautorefname}{\figureautorefname}%
+    }{\relax}
+\makeatother
+
+
+% ****************************************************************************************************
+% 7. Last calls before the bar closes
+% ****************************************************************************************************
+% ********************************************************************
+% Development Stuff
+% ********************************************************************
+\listfiles
+%\PassOptionsToPackage{l2tabu,orthodox,abort}{nag}
+%	\usepackage{nag}
+%\PassOptionsToPackage{warning, all}{onlyamsmath}
+%	\usepackage{onlyamsmath}
+
+% ********************************************************************
+% Last, but not least...
+% ********************************************************************
+\usepackage{classicthesis}
+% ****************************************************************************************************
+
+%%% Magic code; don't ask ;-)
+% Converts part numbers in the TOC to upper case and fixes spacing
+% Copied from http://tex.stackexchange.com/a/140053/35204
+\makeatletter
+\def\ttl@tocpart{%
+  \def\ttl@a{\protect\numberline{\thepart}\@gobble{}}}
+\setlength{\cftpartnumwidth}{\cftchapnumwidth}
+\makeatother
+
+% Makes the bibliographies sections instead of chapters
+\KOMAoption{bibliography}{leveldown}
+
+% ****************************************************************************************************
+% 8. Further adjustments (experimental)
+% ****************************************************************************************************
+% ********************************************************************
+% Changing the text area
+% ********************************************************************
+%\linespread{1.05} % a bit more for Palatino
+%\areaset[current]{312pt}{761pt} % 686 (factor 2.2) + 33 head + 42 head \the\footskip
+%\setlength{\marginparwidth}{7em}%
+%\setlength{\marginparsep}{2em}%
+
+% ********************************************************************
+% Using different fonts
+% ********************************************************************
+%\usepackage[oldstylenums]{kpfonts} % oldstyle notextcomp
+%\usepackage[osf]{libertine}
+%\usepackage{hfoldsty} % Computer Modern with osf
+%\usepackage[light,condensed,math]{iwona}
+%\renewcommand{\sfdefault}{iwona}
+%\usepackage{lmodern} % <-- no osf support :-(
+%\usepackage[urw-garamond]{mathdesign} % <-- no osf support :-(
+% ****************************************************************************************************
+
+% Switch between my own version and the version to submit to Carleton
+\newboolean{carleton-version}
+\setboolean{carleton-version}{false}
+\ifthenelse{\boolean{carleton-version}}{
+% Settings for Carleton version:
+
+% Double spacing (only if they insist; it's extremely ugly)
+%\linespread{1.5}
+
+% Remove all external hyperlinks
+\renewcommand{\href}[2]{#2}
+\renewcommand{\url}[1]{#1}
+
+% Stuff to make it PDF/A compliant?
+}{
+% Settings for my personal version
+}
+
+% Define commands
+\newcommand{\etal}{et~al.\xspace}
+\newcommand{\from}[1]{{\emph{\textbf{(#1)}}}}
+\newcommand{\case}[1]{\paragraph{Case {\upshape #1}.}}
+\newenvironment{extraStretch}[1]{
+  \par
+  \setlength{\emergencystretch}{#1}
+}{
+  \par
+}
+
+% For conespanners in general
+\newcommand{\T}[2]{\ensuremath{\triangle_{#1 #2}}}
+\newcommand{\nC}{\ensuremath{\overline{C}}}
+
+% For theta-5
+\newcommand{\graph}{\ensuremath{\Theta_5}-graph\xspace}
+\newcommand{\valc}{\ensuremath{2 \left( 2 + \sqrt{5} \right) \approx 8.473}\xspace}
+\newcommand{\valsr}{\ensuremath{\sqrt{50 + 22 \sqrt{5}} \approx 9.960}\xspace}
+\newcommand{\vallb}{\ensuremath{\frac{1}{2}(11\sqrt{5} - 17) \approx 3.799}\xspace}
+
+% For competitive routing
+\newcommand{\hts}{half-\ensuremath{\Theta_6}-graph\xspace}
+\newcommand{\length}[1]{\ensuremath{|#1|}}
+
+\newcommand{\dtw}{\ensuremath{G_{12}}\xspace}
+\newcommand{\dn}{\ensuremath{G_{9}}\xspace}
+
+\renewcommand{\c}[1]{\ensuremath{C_#1}}
+\newcommand{\nc}[1]{\ensuremath{\overline{C}_#1}}
+
+\newcommand{\sA}{\ensuremath{\mathcal{A}}\xspace}
+\newcommand{\sB}{\ensuremath{\mathcal{B}}\xspace}
+\newcommand{\sC}{\ensuremath{\mathcal{C}}\xspace}
+
+% For flipping to 4-connected
+\newcommand{\type}[1]{\smallskip\spacedlowsmallcaps{Type #1 (}\includegraphics{f4c/Type#1}\spacedlowsmallcaps{):}}
+
+% For edge-labelled flips
+
+\newcommand{\gS}{\ensuremath{\mathcal{S}}\xspace}
+\newcommand{\gI}{\ensuremath{\mathcal{C}_{\text{in}}}\xspace}
+\newcommand{\gO}{\ensuremath{\mathcal{C}_{\text{out}}}\xspace}
+\newcommand{\vI}{\ensuremath{v_{\text{in}}}\xspace}
+\newcommand{\vO}{\ensuremath{v_{\text{out}}}\xspace}
+
+\newcommand{\vl}{\ensuremath{v_{\textsc{l}}}}
+\newcommand{\vr}{\ensuremath{v_{\textsc{r}}}}
+\newcommand{\free}{\ensuremath{\mathcal{F}}}
+\newcommand{\nf}{\ensuremath{\overline{F}}}

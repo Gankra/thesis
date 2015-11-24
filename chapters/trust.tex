@@ -1,0 +1,295 @@
+\chapter{Trust}
+\label{ch:trust}
+
+We believe that the three memory-safety errors we described in the previous
+section, and many more like them, all boil down to a single issue: data trust.
+All programs require or expect data to have certain properties. This trust
+is so pervasive that it's easy to forget that we're even making assumptions about
+how data will behave. This trust has many aspects:
+
+
+
+
+First, there is the \emph{property} of the data that is trusted. The simplest form of
+trust is trusting that certain values don't occur: booleans are either `true`
+or `false`, but never `FileNotFound`. This kind of property is generally quite
+manageable because it's easy to verify on demand.
+
+The more complex form of property is trusting that separate pieces of data agree.
+This is the kind of property that we see in our memory-safety errors. Indices need
+to agree with the length of the array, the allocator needs to agree that
+dereferenced pointers are allocated, and iterators need to agree with the collection
+they iterate. This is the kind of trust we will be focusing on for the bulk of
+this work.
+
+
+
+
+Second, there is the \emph{who} to trust with data. For most applications, it's pretty
+reasonable to design an interface that assumes that the language, hardware, and
+operating system are well-behaved. Of course, bugs in any of these systems
+may necessitate workarounds, but we don't consider this aspect to be particularly
+interesting. At some limit, these systems just work the way they work, and any
+oddities can be regarded as a nasty corner-case to be documented.
+
+The aspect of who to trust that we consider really interesting is within the
+boundary of userland. Within a single program, functions need to decide whether
+to trust other functions. It's fairly reasonable to trust a single concrete
+function to be well-behaved. For instance, if one wishes to invoke a print
+function that claims to only read its inputs, it's reasonable to rely on that
+fact. We consider it reasonable to extend our trust here because it's being done
+in a \emph{closed} manner. That is, it's in principle possible to test or otherwise
+verify that the print function doesn't mutate its input, especially if the
+source is available.
+
+The problematic case is when we need to extend our trust in an \emph{open} manner. Public
+functions can be called by arbitrary code, and as such need to worry about trusting
+their caller. Do we trust the caller to pass us correct inputs? Do we trust the caller
+to invoke us at the right time? Similarly, generic or higher-order functions need to
+worry about trusting the arbitrary functions that they're given. If we were \emph{given}
+a printing function instead of getting to call some concrete
+one, we then have to worry if that print function will uphold its promise not to mutate
+the input.
+
+
+
+
+Third, there is the \emph{consequences} of the trust; what happens if trust
+is violated? Consequences for an application can range from marginal to catastrophic;
+it could perform slightly worse, produce nonsensical output, crash, delete the
+production database, or compromise the system it's running on.
+The consequences of an assumption can easily shape whether that assumption is
+made at all. Certainly, leaving the system vulnerable is not something to be
+taken lightly.
+
+
+
+
+Fourth and finally, there is the \emph{justification} of the trust. At one extreme, one may simply
+blindly trust the data. Indexing is unchecked; pointers are assumed to be
+allocated; and booleans are assumed to be true or false.
+
+At the other extreme, one can statically guarantee that data is correct. Static
+type checking can help ensure that a boolean doesn't contain FileNotFound,
+control flow analysis can determine if a pointer is used after it's freed, and
+normalized databases ensure that there is a single source of truth for each fact.
+
+Somewhere in between these two extremes, one can \emph{validate} or \emph{correct} data
+at runtime. Indexes may be checked against an array's length; inputs may
+be escaped; and iterators can check that their collection hasn't been modified.
+
+We respectively call these three approaches \emph{naivety}, \emph{paranoia}, and \emph{suspicion}.
+As we will see, they each have their own strengths and weaknesses that makes them appropriate
+for different tasks. As such, basically every piece of software relies on a combination
+of these strategies to strike a balance between the competing demands of control, safety,
+and ergonomics. That said, some systems clearly favour some strategies more than others.
+
+
+
+\section{Naivety}
+
+A naive interface isn't a fundamentally bad interface. It's just one that trusts
+that the world is great and everyone is well-behaved. Providing a naive interface
+is a bit like giving everyone you meet a loaded gun and trusting that they use
+it wisely. If everyone \emph{is} well-behaved, then everything goes great. Otherwise,
+someone might lose a leg.
+
+First and foremost, a naive interface
+is simply the easiest to \emph{implement}. The implementor doesn't need to concern
+themselves with corner cases because they are simply assumed to not occur. This
+in turn gives significant control to the user of the interface, because they don't
+need to worry about the interface checking or mangling inputs. It's up to the user
+to figure out how correct usage is ensured. Since the user has the most context,
+they are the best poised to identify when assumptions can or can't be made.
+
+Naive interfaces may also expose lower-level details more freely, on the
+assumption that they will be used correctly. This empowers users to effeciently
+and reliably perform operations that may never have been envisioned by the
+original implementor, or were simply deemed too much work to develop and maintain.
+Control is absolutely the greatest strength of naive interfaces. They empower
+excellent programmers to produce excellent code where it matters.
+
+For similar reasons, naive interfaces are also, in principle, ergonomic to work
+with. In particular one is allowed to try to use the interface in whatever
+manner they please. This enables programs to be transformed in a more continuous
+manner. Intermediate designs may be incorrect in various ways, but if one is
+only interested in exploring a certain aspect of the program that doesn't depend
+on the incorrect parts, they are free to do so.
+
+The uncontested champion of this approach is C. In particular, its notion of
+\emph{Undefined Behaviour} is exactly naivety. C programs are expected to uphold
+several non-trivial properties, and the C standard simply declares that if those
+properties \emph{don't} hold, the program is \emph{undefined}. This naivety can be found in
+relatively small and local details like unchecked indexing, as well as massive
+and pervasive ones like manual memory management.
+
+Undefined Behaviour demonstrates the extreme drawback of naive
+interfaces. Breaking C's trust has dire consequences, as the compiler is free to misoptimize the
+program in arbitrary ways, leading to memory corruption bugs and high severity
+vulnerabilities. Modern compilers try to give
+a helping hand with debug assertions and static analysis, but blind trust is
+evidently too deeply ingrained into C. Programs written in languages like C
+continue to be exploited, and no end to this is in sight.
+
+If the consequences of misuse are high or the contracts that must be upheld are
+too onerous, the ergonomic benefits of naive interfaces can be undermined.
+Having to be always vigilant against incorrect usage can be mentally exhausting.
+The problems that result from misusing a naive interface can also be cryptic and
+difficult to debug, due to the fact that they don't tend to fail fast, but instead
+silently corrupt the system.
+
+That said, the control that C's trusting design provides is highly coveted.
+Operating systems, web browsers, game engines, and other widely used pieces of
+software continue to be primarily developed in C(++) because of the perceived
+benefits of this control. Performance is perhaps the most well-understood benefit
+of control, but it can also be necessary for correctness in the case of hardware
+interfaces. Languages without this control are simply irrelevant for many projects.
+
+
+
+
+
+\section{Paranoia}
+
+Paranoid designs represent a distrust so deep that one believes things must be
+taken away so as to eliminate a problem \emph{a priori}. Where the naive would give
+everyone a loaded gun, the paranoid are so concerned with people getting shot
+that they would try to make it impossible by eliminating bullets, guns, or even
+people.
+
+There are two major families of paranoid practices: omissions and static analysis.
+
+Omissions represent pieces of functionality that could have been provided or
+used, but were deemed too error-prone. The much-maligned `goto` is perhaps
+the most obvious instance of a paranoid omission, but it's not the most
+interesting. The most interesting omission is the ability to manually free memory,
+which is the omission that all garbage collected languages effectively make.
+Some less popular examples include always-nullable pointers (Haskell, Swift, Rust),
+concurrency (JavaScript), and side-effects (pure functional programming).
+
+Static analysis consists of verifying a program has certain properties at
+compile-time. Static typing is the most well-accepted of these practices,
+requiring every piece of data in the program to have a statically known type.
+Various static lints for dubious behaviours also fall into this category,
+including code style checks. This analysis also includes more exotic systems
+like dependent-typing, which expresses requirements on runtime values (such as
+`x < y`) at the type level.
+
+The primary benefit of paranoid practices is maximum safety. Ideally, a paranoid
+solution doesn't just handle a problem, it \emph{eliminates} that problem. For
+instance, taking away memory freeing completely eliminates the use-after-free,
+because there is \emph{no} ``after free'' (garbage collection being ``only'' an
+optimization). Similarly, a lack of concurrency eliminates data races, because
+it's impossible to race. Lints may completely eliminate specific mistakes, or
+simply reduce their probability by catching the common or obvious instances.
+Dependent typing can eliminate indexing out of bounds, by statically proving
+that all indices are in bounds \cite{xi1998eliminating}.
+
+The cost of this safety is usually control or ergonomics. Paranoid practices point to the pervasive
+problems that unchecked control leads to, and declare that this is why we can't have nice
+things. Certain operations must be forbidden, or require burdensome annotation.
+It's worth noting that a loss of control does not necessarily imply a
+loss in performance. In fact, quite the opposite can be true: an optimizing
+compiler can use the fact that certain things are impossible to produce more
+efficient programs \cite{coutts2007stream}.
+
+That said, paranoid practices \emph{do} generally take away a programmer's ability to
+directly construct an optimized implementation. One must instead carefully craft
+their program so that it happens to be optimized in the desired manner. This
+leaves the programmer dependent on the compiler to understand how to produce the
+desired idiom, and may require significant annotations to convince it that this
+is desirable. In some cases, this means that the desired output is simply
+impossible.
+
+The ergonomic impact of paranoid practices is a tricky subject. For the most
+part, paranoid practices err on the side of producing false negatives -- better to
+eliminate some good programs than allow bad programs to exist! This can lead to
+frustration if one wishes to produce a program they believe to be a false
+negative.
+
+Omissions are generally much more well-accepted in this regard, particularly
+when an alternative is provided that handles common cases. The
+absence of manual free is quite popular because freeing memory is purely annoying
+book-keeping. Freeing memory has no inherent semantic value, it's just necessary
+to avoid exhausting system resources. The fact that garbage collection just
+magically frees memory for you is pretty popular, as evidenced by its dominance
+of the programming language landscape (C and C++ being the most notable exceptions).
+However some omissions can be too large to bear. Few systems are designed in
+a pure-functional manner.
+
+Static analysis is much more maligned, as the developers of coverity found
+\cite{bessey2010few}. It's easy to forgive an omission, particularly if one isn't
+even aware that an omission occurred (how many programmers are even aware of
+goto these days?). Static analysis, on the other hand, is active and in the programmer's face.
+It continuously nags the programmer to do a better job, or even prevents the
+program from running. Static typing, one of the less controversial
+strategies, is rejected by many popular languages (JavaScript, Python, Ruby).
+Meanwhile, dependent types struggle to find any mainstream usage at all. These practices
+can also harm the ability to continuously transform a program, forcing the
+programmer to prove that \emph{everything} is correct in order to test \emph{anything}.
+
+Regardless, embracing paranoia \emph{can} be liberating. Once a paranoid
+practice is in place, one never needs to worry about the problems it addresses
+again. Once you start collecting your own rainwater, why worry what's being put
+in the water supply?
+
+
+
+
+\section{Suspicion}
+
+Finally we have the position of compromise: the suspicious practices. A suspicious
+design often looks and acts a lot like a trusting design, but with one caveat: it
+actually checks at runtime. The suspicious stance is that some baseline level of
+safety is important, but categorically eliminating an error with a paranoid practice
+is impractical. The suspicious might give everyone guns, but make them explode whenever
+a HumanPointerException is detected.
+
+Suspicious practices can skew to be implicit or explicit, in an
+attempt to fine-tune the tradeoffs.
+
+In languages where pointers are nullable by default, it's common for all dereferences
+to silently and implicitly check for null. This may cause the program to completely
+crash or trigger unwinding (an ``exception'' in many languages). This allows the programmer
+to write the program in a trusting way without worrying about the associated danger.
+
+Other interfaces may require the author to explicitly acknowledge invalid cases.
+For instance, an API may only provide access to its data through callbacks which it
+invokes when the data is specifically correct or incorrect. This approach is often
+more general, as it can be wrapped to provide the implicit form. Compared to
+implicit checks, explicit checks give more control to the user and can improve the
+clarity of code by making failure conditions more clear. But this comes at
+a significant ergonomic cost; imagine if every pointer dereference in Java
+required an error callback!
+
+Regardless of the approach, suspicious practices are a decent compromise. For
+many problems the suspicious solution is much easier to implement, work with,
+and understand than the paranoid solution. Array indexing is perhaps the best
+example of this. It's incredibly simple to have array indexing unconditionally
+check the input against the length of the array. Meanwhile, the obvious paranoid
+solution to this problem requires an integer theorem solver and may require
+significant programmer annotations for complex access patterns. That said,
+paranoid solutions can also be simpler. Why check every dereference for
+null, when one can simply not let pointers be null in the first place?
+
+One significant drawback of suspicious practices, particularly of the implicit
+variety, is that they do little for program \emph{correctness}. They just make sure
+that the program doesn't do arbitrary unpredictable things with bad data, usually by
+reliably crashing the program. This can be great for detecting, reproducing,
+and fixing bugs, but a crash is still a crash to the end user. This can be
+especially problematic for critical systems, where a crash is essentially a
+critical vulnerability.
+
+Suspicious solutions also often have the worst-in-class performance properties
+of the three solutions. Trusting solutions let the programmer do whatever they
+please while still aggressively optimizing. Paranoid solutions give the
+compiler and programmer rich information to optimize the program with.
+But suspicious solution gets to assume little, and must bloat up
+the program with runtime checks which further inhibit other optimizations.
+That said, a good optimizing compiler can completely eliminate this gap in
+some cases. Bounds checks in particular are easily eliminated in common cases
+\cite{grosser2011polly}.
+
+
+
+

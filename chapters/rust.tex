@@ -1,0 +1,493 @@
+\chapter{Rust}
+\label{ch:rust}
+
+Rust tries to be a practical language. It understands that each perspective has
+advantages and drawbacks, and tries to pick the best tool for each job. From each
+perspective, Rust takes one key insight. From the naive perspective, we embrace
+that control is incredibly important. Rust wants to be used in all the places where
+C and C++ are used today, and being able to manually manage memory is a critical
+aspect of that. From the paranoid perspective, we embrace that completely
+eliminating errors is great. Humans are fallible and get tired, but a good compiler
+never rests and always has our back. From the suspicious perspective, we embrace
+that compromises must be made for ergonomics.
+
+Part of Rust's solution is then simply taking our favourite solutions for
+each specific problem: static types, runtime bounds checks, no nulls, wrapping
+arithmetic, and so on. However Rust has one very large holistic solution to
+many problems, and it's what separates it from most other languages: ownership.
+The ownership model has two major aspects: controlling where and when data lives;
+and controlling where and when mutation can occur. These aspects are governed by
+three major features: affine types, regions, and privacy.
+
+
+
+
+
+
+\section{Affine Types}
+
+At a base level, Rust manages data ownership with an \emph{affine type system} \cite{tov2011practical}. The
+literature often describes affine types as being usable \emph{at most once}, but from
+Rust's perspective affine typing primarily means values are \emph{uniquely owned}.
+To C++ developers, affine typing can be understood as a stricter version of
+\emph{move semantics}.
+
+If a variable stores a collection, passing it to a function by-value or
+assigning it to another variable transfers ownership of the value to the new
+location. The new location gains access to the value, and the old location loses
+access. Whoever owns the value knows that it's the only location
+in existence that can possibly talk about the contents of the collection.
+This allows the owner of the collection to soundly \emph{trust} the
+collection. Any properties it observes and wishes to rely on will not be changed
+by some other piece of code without its permission. Perhaps more importantly,
+the owner of the collection knows that it can do whatever it pleases with the
+collection without interfering with anyone else.
+
+A simple example:
+
+\begin{minted}{rust}
+fn main() {
+    // A growable array
+    let data = Vec::new();
+
+    // transfer ownership of `data` to `data2`
+    let data2 = data;
+    // `data` is now statically inaccessible, and logically uninitialized
+
+    // transfer ownership of `data2` to `consume`
+    consume(data2)
+    // `data2` is now statically inaccessible, and logically uninitialized
+}
+
+fn consume(mut data3: Vec<u32>) {
+    // Mutating the collection is known to be safe, because `data3` knows
+    // it's the only one who can access it.
+    data3.push(1);
+}
+\end{minted}
+
+The greatest of these rights is destruction: when a variable goes out of scope,
+it destroys its value forever. This can mean simply forgetting the value,
+or it can mean executing the type's destructor. In the case of a collection,
+this would presumably recursively destroy all contained values, and free all of
+its allocations.
+
+Affine types are primarily useful for eliminating the \emph{use-after} family of bugs.
+If only one location ever has access to a value, and a value is only invalidated
+when that one location disappears, then it's trivially true that one cannot use
+an invalidated value. For this reason, the most obvious applications of affine
+typing are with various forms of transient resources: threads, connections,
+files, allocations, and so on.
+
+However it turns out that a surprising number of problems can be reduced to a
+use-after problem. For instance, many APIs require some sequence of steps to
+be executed in a certain order. This can be encoded quite easily using affine
+types. Functions can produce a ``proof of work'' by returning a type that only
+they have permission to produce. Similarly, functions can \emph{require} a proof
+of work by consuming a special type:
+
+\begin{minted}{rust}
+fn first() -> First;
+fn second(First) -> Second;
+fn third(Second) -> Third;
+fn alternative(First) -> Alternative;
+\end{minted}
+
+We can therefore use affine types to model valid control flow and statically
+ensure correct usage. \emph{Session types} are the logical extreme of this
+technique, where programs effectively ``write themselves'' due to their type
+constraints. Munksgaard and Jespersen \cite{munksgaard2015practical} have an
+excellent analysis of session typing in Rust, so we won't dwell on this topic.
+
+It should be noted that affine typing isn't mandatory in Rust. For many types,
+like booleans and integers, unique ownership doesn't make sense or isn't
+important. Such types can opt into \emph{copy} semantics. Copy types behave like any
+other value with one simple caveat: when they're moved, the old copy of the
+value is still valid.
+
+Copy semantics can have surprising consequences though. For instance, it may be
+reasonable for a random number generator to be copyable,  as their internal
+state is generally just some integers. It then becomes possible to
+\emph{accidentally} copy the generator, causing the same number to be yielded
+repeatedly. For this reason, some types which \emph{could} be copied safely don't opt
+into copy semantics. In this case, affine typing is used as a lint against what
+is likely, but not necessarily, a mistake.
+
+
+
+
+
+\section{Borrows and Regions}
+
+Affine types are all fine and good for some problems, but if that's all Rust had,
+it would be a huge pain in the neck. In particular, it's very common to want
+to \emph{borrow} a value. In the case of a unique borrow, affine types can encode
+this fine: you simply pass the borrowed value in, and then return it back.
+
+This is, at best, just annoying to do. Borrows must be ``threaded'' throughout
+such an API explicitly in both the types and code:
+
+\begin{minted}{rust}
+struct Data { secret: u32 }
+
+fn main() {
+    let mut data = Data { secret: 0 }
+    data = mutate(data);
+    data = mutate(data);
+    data = mutate(data);
+}
+
+fn mutate(mut data: Data) -> Data {
+    data.secret += 1;
+    return data;
+}
+\end{minted}
+
+Affine types \emph{really} hit a wall when data wants to be \emph{shared}. If
+several pieces of code wish to concurrently read some data, we have a serious
+issue. One solution is to simply \emph{copy} the data to all the consumers. Each
+has their own unique copy to work with, and everyone's happy.
+
+However, even if we're ignoring the performance aspect of this strategy (which
+is non-trivial), it may simply not make sense. If the underlying resource to
+share is truly affine, then there may be \emph{no} way to copy the data in a
+semantic-preserving way. For instance, one cannot just blindly copy a file
+handle, as each holder of the handle could then close it while the others are
+trying to use it.
+
+At the end of the day, having only values everywhere is just dang \emph{impractical}.
+Rust is a practical language, so it takes a tried and true solution: pointers! Unfortunately,
+pointers make everything more complicated and difficult. Affine types ``solved''
+use-after errors for us, but pointers bring them back and make them \emph{far} worse.
+The fact that data has been moved or destroyed says nothing of the state of
+pointers to it. As C has demonstrated since its inception, pointers are all too
+happy to let us view data that might be destroyed or otherwise invalid.
+
+Garbage collection solves this problem for allocations, but does nothing to
+prevent trying to use an otherwise invalidated value, such as a closed file.
+Rust's solution to this problem is Cyclone's most significant contribution to
+the language: regions \cite{swamy2006safe}.
+
+Like affine types, regions are something well established in both theory and
+implementation, but with little mainstream usage. Although Rust primarily cribs
+them from Cyclone, they were first described by Tofte and Talpin \cite{tofte1997region}
+and used in an implementation of ML. That said, Cyclone's version of regions
+is most immediately recognizable to a Rust programmer.
+
+The idea of a region system is that pointers are associated with the region of
+the program that they're valid for, and the compiler ensures that pointers don't
+escape their region. This is done entirely at compile time, and has no runtime
+component.
+
+For Rust, these regions correspond to lexical scopes, which are roughly speaking
+pairs of matching braces. The restriction to lexical scopes is not fundamental,
+and was simply easier to implement for the 1.0 release. It is however sufficient
+for most purposes. Rust calls these regions \emph{lifetimes}.
+
+At a base level, all a region system does is statically track what pointers are
+outstanding during any given piece of code. By combining this information with
+other static analysis it's possible to completely eliminate several classes of error
+that are traditionally relegated to garbage collection. Region analysis allows us
+to statically identify when a value is moved or destroyed while being pointed to,
+and produce an error to that effect:
+
+\begin{minted}{rust}
+fn main() {
+    // Gets a dangling pointer
+    let data = compute_it(&0);
+    println!("{}", data);
+}
+
+fn compute_it(input: &u32) -> &u32 {
+    let data = input + 1;
+    // Returning a pointer to a local variable
+    return &data;
+}
+\end{minted}
+
+\begin{minted}{text}
+<anon>:11:13: 11:17 error: `data` does not live long enough
+<anon>:11     return &data;
+                      ^~~~
+<anon>:8:36: 12:2 note: reference must be valid for the anonymous lifetime #1 defined on the block at 8:35...
+<anon>: 8 fn compute_it(input: &u32) -> &u32 {
+<anon>: 9     let data = input + 1;
+<anon>:10     // Returning a pointer to a local variable
+<anon>:11     return &data;
+<anon>:12 }
+<anon>:9:26: 12:2 note: ...but borrowed value is only valid for the block suffix following statement 0 at 9:25
+<anon>: 9     let data = input + 1;
+<anon>:10     // Returning a pointer to a local variable
+<anon>:11     return &data;
+<anon>:12 }
+\end{minted}
+
+On its own, this is pretty great: no dangling pointers without the need for
+garbage collection! When combined with an affine type system
+we get something even more powerful than garbage collection. For instance, if
+you close a file in a garbage collected language, there is nothing to prevent
+old pointers to the file from continuing to work with it. One must guard for
+this at runtime. In Rust, this is simply not a concern:
+it's statically impossible. Closing the file destroys it, and that means all
+pointers must be gone. Affinity is therefore a paranoid solution to using things
+in the wrong order.
+
+Unfortunately, this doesn't solve problems like iterator invalidation. When an
+iterator is invalidated, the collection it was pointing to wasn't \emph{destroyed},
+it was just changed.
+
+The most extreme solution is to simply forbid internal pointers. Only allow
+pointers to borrow variables on the stack, and everything else has to be copied
+out. Then we never have to worry about pointers being invalidated. Unfortunately,
+this would be a very limiting system. It would make composition of affine types useless,
+because you could never access the components without destroying the aggregate.
+It also doesn't really solve the problem the way we wanted. Most iterators we'd
+be interested in providing would become inexpressible under this model. For
+instance, one couldn't yield interior pointers from an iterator. Depending on
+the details, any kind of tree iterator may be completely impractical.
+
+Another extreme solution would be to forbid mutation of data. Mutations can be emulated
+by creating a new object with the necessary changes, so this is in principle
+possible. However this suffers from similar issues as borrow threading: it's
+really annoying. It would also be incredibly difficult to obtain the same
+control as C(++) under this model.
+
+Yet another way is to treat all pointers into the array as pointers \emph{to}
+the array, and simply forbidding mutation \emph{through} pointers. All mutating operations
+could require by-value (and therefore unique) access, which could be done with borrow-threading.
+This is unfortunate because we were trying to avoid borrow-threading by introducing
+pointers in the first place. But hey, at least we could share data immutably,
+which is a definite win.
+
+Rust basically takes this last approach, but in order to avoid the annoying pain of
+threading borrows, it includes two different \emph{kinds} of pointer:
+\emph{mutable references} and \emph{shared references} denoted \mintinline
+{rust}{&mut} and \mintinline{rust}{&} respectively. Shared references are exactly as we described: they can be
+freely aliased, but only allow you to read the data they point to. Mutable
+references on the other hand must be unique, but enable mutation of the data
+they point to. This means that taking a mutable reference to some data is like moving
+it, but then having the compiler automatically insert all the boiler-plate
+to move it back into place when the mutable reference is gone (the
+compiler does not actually move the data around when you take a mutable
+reference).
+
+Let's look at some simple examples:
+
+\begin{minted}{rust}
+let mut data = 0;
+
+{
+    // Allowed to take multiple shared references
+    let data_ref1 = &data;
+    let data_ref2 = &data;
+
+    // Allowed to read through them, and still read the value directly
+    println!("{} {} {}", data_ref1, data_ref2, data);
+
+    // Note allowed to mutate through them (compiler error)
+    // *data_ref1 += 1;
+}
+
+{
+    // Allowed to take one mutable reference
+    let data_mut = &mut data;
+
+    // Allowed to read or write through it
+    println!("{}", data_mut);
+    *data_mut += 1;
+
+    // Allowed to move the mutable reference to someone else
+    data_the_second = data_mut;
+
+    // Not allowed to get an aliasing shared reference (compiler error)
+    // let data_ref = &data;
+
+    // Not allowed to get an aliasing mutable reference (compiler error)
+    // let data_mut2 = &mut data;
+
+    // Not allowed to directly access data anymore (compiler error)
+    // println!("{}", data);
+}
+
+// All borrows out of scope, allowed to access data again
+data += 1;
+println!("{}", data);
+\end{minted}
+
+
+
+\section{Mutable XOR Shared}
+
+This is Rust's most critical perspective on ownership: mutation is mutually
+exclusive with sharing. In order to get the most out of this perspective, Rust
+doesn't allow mutability to be declared at the type level. That is, a struct's
+field cannot be declared to be constant. Instead, the mutability of a value is
+\emph{inherited} from how it's accessed: as long as you have something by-value or
+by-mutable-reference, you can mutate it.
+
+This stands in contrast to the perspective that mutation is something to be
+avoided completely. It's well-known that mutation can cause problems, as we've
+seen. This has lead some to conclude that mutation should be avoided as much
+as possible. Never mutating anything does indeed satisfy Rust's requirement
+that sharing and mutating be exclusive, but in a vacuous way (mutating never
+occurs). Rust takes a more permissive stance: mutate all you want as long
+as you're not sharing. It is our belief that this eliminates most of the
+problems that mutation causes in practice.
+
+In particular, this statically eliminates iterator invalidation. For
+instance, consider the following program:
+
+\begin{minted}{rust}
+fn main() {
+    let mut data = vec![1, 2, 3, 4, 5, 6];
+    for x in &data {
+        data.push(2 * x);
+    }
+}
+\end{minted}
+
+What exactly the programmer's intent was here was unclear, and what exactly
+will happen if this were allowed to compile is even more unclear.
+Thankfully, in Rust we don't \emph{need} to wonder what the programmer meant or
+what will happen when this is run, because it doesn't compile:
+
+\begin{minted}{text}
+<anon>:4:9: 4:13 error: cannot borrow `data` as mutable because it is also borrowed as immutable
+<anon>:4         data.push(2 * x);
+                 ^~~~
+<anon>:3:15: 3:19 note: previous borrow of `data` occurs here; the immutable borrow prevents subsequent moves or mutable borrows of `data` until the borrow ends
+<anon>:3     for x in &data {
+                       ^~~~
+<anon>:5:6: 5:6 note: previous borrow ends here
+<anon>:3     for x in &data {
+<anon>:4         data.push(2 * x);
+<anon>:5     }
+             ^
+\end{minted}
+
+This strategy also nicely generalizes to a concurrent context. A data race is
+defined to occur when two threads access a piece of data in an unsynchronized
+way, and one is writing. This is exactly aliasing and mutation, which is
+forbidden by Rust's scheme. As such, everything in Rust is thread-safe by default.
+
+Of course, perfectly good concurrent algorithms and data structures are rife with aliasing and
+mutability. Mutexes exist \emph{precisely} to enable aliasing and mutation in a
+controlled manner. As a result, although inherited mutability is the default way to do things in
+Rust, it is not the only way. A few key types provide \emph{interior mutability},
+which enables their data to be mutated through shared references as long as some
+runtime mechanism ensures that mutable references aren't aliased. The most
+obvious example of this is exactly the standard library's Mutex type, which
+allows an \mintinline{rust}{&Mutex<T>} to become an \mintinline{rust}{&mut T} by
+acquiring its lock. This is in turn made sound by affinity and the borrow checker ensuring the
+
+
+
+
+
+
+
+\section{Unsafe Rust}
+
+Most languages are considered memory-safe. However with few exceptions, this
+isn't actually true. In fact, basically \emph{every} language has unsafe bits that
+make the language totally unsound. The most fundamental of these is quite
+simple: talking to C. C is the lingua-franca of the programming world. All
+major operating systems and many major libraries primarily expose a C interface.
+Any language that wants to integrate with these systems must therefore learn
+how to talk to C. Because C is \emph{definitely} unsafe and can do just about anything
+to your program, these languages then become transitively unsafe.
+
+Rust is no different, but it embraces this reality a little more than most
+other languages. Rust is actually \emph{two} languages: Safe Rust, and Unsafe Rust.
+Safe Rust is the Rust we have been focusing on for the most part. It
+is intended to be completely safe with one exception: it can talk to
+Unsafe Rust. Unsafe Rust, on the other hand, is definitely not a safe language.
+In addition to being able to talk to C (like any safe language), it enables the
+programmer to work with several constructs that would be easily unsound for
+Safe Rust. Most notably, Unsafe Rust includes raw C-like pointers which are
+nullable and untracked.
+
+At first glance, Unsafe Rust appears to completely undermine Rust's claims about
+safety, but we argue that it in fact \emph{improves} its safety story. In most safe
+languages, if one needs to do something very low level (for performance, control,
+or any other reason) the general solution to this is ``use C''. This has several
+downsides.
+
+First, there's a cognitive overhead. Such an application now has
+its logic spread across two completely different languages with different
+semantics, runtimes, and behaviors. If the safe language is what the development
+team primarily works in, it's unlikely that a significant percentage of the team
+is qualified to actively maintain the C components. Second, it incurs non-trivial
+runtime overhead. Data must often be reformatted at the language boundary, and
+this boundary is usually an opaque box for either language's optimizer.
+Finally, falling back to C is simply a \emph{huge} jump in unsafety, from ``totally
+safe'' to ``pervasively unsafe''.
+
+Unsafe Rust largely avoids these issues with one simple fact:
+it's just a superset of Safe Rust. Lifetimes, Affine Types, and everything else
+that helps you write good Rust programs are still working exactly as before.
+You're just allowed to do a few extra things that are unsafe. As a result,
+there's no unnecessary runtime or semantic overhead for using Unsafe Rust.
+
+Of course one \emph{does} need to understand how to manually uphold Safe Rust's
+various guarantees when using Unsafe Rust's extra parts, and this isn't trivial.
+However this is still a better situation than using C, because the unsafety is
+generally much more modular. For instance, if you use Unsafe Rust to index into
+an array in an unchecked manner, you don't suddenly need to worry about the
+array being null, dangling, or containing uninitialized memory. All you need to
+worry about is if the index is actually in bounds. You know everything else is
+still normal.
+
+In addition, Unsafe Rust doesn't require any kind of complicated foreign
+function interface. It can be written inline with Safe Rust on demand. Rust's
+only requirement is that you write the word ``unsafe'' \emph{somewhere} to indicate
+that you understand that what you're doing is unsafe. Since unsafety is
+explicitly denoted in this manner, it also enables it to be detected and linted
+against if desired.
+
+Rust's standard library (which is written entirely in Rust) makes copious use of
+Unsafe Rust internally. Most fundamentally, Unsafe Rust is necessary to provide
+various operating system APIs because those are written in C, and only Unsafe
+Rust can talk to C. However Unsafe Rust is also used in various places to
+implement core abstractions like mutexes and growable arrays.
+
+It's important to note that the fact that these APIs use unsafe code is entirely
+an implementation detail to those using the standard library. All the unsafety
+is wrapped up in \emph{safe abstractions}. These abstractions serve two masters: the
+consumer of the API, and the producer of the API. The benefit to consumers of an
+API is fairly straight-forward: they can rest easy knowing that if something
+terrible happens, it wasn't their fault. For producers of the API, these safe
+abstractions mark a clear boundary for the unsafety they need to worry about.
+
+Unsafe code can be quite difficult because it often relies on stateful
+invariants. For instance, the capacity of a growable array is a piece of state
+that unsafe code must trust. However within the array's privacy boundary, this
+state can be arbitrarily manipulated by anyone. The abstraction boundary is
+often exactly where privacy kicks in, preventing consumers of the API from doing
+arbitrarily bad things to the state unsafe code relies on.
+
+This rest of this thesis focuses primarily on these safe abstractions. A good safe abstraction
+must have many properties:
+
+* Safety: Using the abstraction inappropriately cannot violate Rust's safety guarantees.
+* Efficiency: Ideally, an abstraction is \emph{zero cost}, meaning it is as efficient
+  at the task it is designed to solve as an unabstracted solution (with a decent
+  optimizing compiler).
+* Usability: A good abstraction should be more convenient and easy to understand than
+  the code it's wrapping.
+
+It would be \emph{excellent} if the implementation was also completely safe, but we
+do not consider this a critical requirement.
+
+It should be noted that Rust's reliance on safe abstractions is, in some sense,
+unfortunate. For one, it makes reasoning about the performance characteristics
+of a program much more difficult, as it relies on a sufficiently
+smart compiler to tear away these abstractions. This in turn means Rust's unoptimized
+performance in a rather atrocious state. It's not uncommon for a newcomer to
+the language to express shock that a Rust program is several times slower than
+an equivalent Python program, only to learn that enabling optimizations makes
+the Rust program several times \emph{faster} than the Python program.
+However it is our opinion that this is simply fundamental to providing a
+programming environment that is safe, efficient, and usable.
+
+

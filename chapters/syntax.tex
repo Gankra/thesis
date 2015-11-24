@@ -1,0 +1,230 @@
+\section{Appendix: Rust Syntax Primer}
+\ref{syntax}
+
+Since this thesis is focused on Rust in particular, it will include a lot of
+Rust source code. Although our code is slightly unidiomatic
+in order to avoid overloading the reader with the finer details of Rust's syntax
+and semantics, this section exists for readers who are completely unfamiliar
+with Rust. If one is interested in learning Rust properly,
+\href{https://doc.rust-lang.org/book/}{\emph{The Rust Programming Language}}
+is the officially recommended book, as it is free and written by the Rust developers.
+
+First and foremost, Rust has the same basic control constructs and operators
+as every other C-style language. \emph{if}, \emph{else}, \emph{while}, and
+\emph{return} behave exactly as expected. Assignment is performed with $=$,
+comparison with $==$, and so on. The only notable exception is that Rust does
+not provide the traditional C-style for-loop. Instead, Rust only provides the
+simpler for-each construct:
+
+\begin{minted}{rust}
+for x in iter {
+    // do stuff with x
+}
+\end{minted}
+
+Variables in Rust are declared with a \emph{let statement}. Variables are
+immutable by default, and can be made mutable with the \emph{mut}
+keyword. The type of a variable is usually inferred, but can be explicitly
+specified with a colon.
+
+\begin{minted}{rust}
+let x = true;       // x is an immutable boolean
+let mut y = false;  // y is a mutable boolean
+let z: i32 = 0;     // z is an immutable 32-bit integer
+\end{minted}
+
+Functions in Rust are written as follows:
+
+\begin{minted}{rust}
+// A function called `add` that takes two 32-bit integers
+// and returns their sum (also a 32-bit integer).
+fn add(x: i32, y: i32) -> i32 {
+    return x + y;
+}
+\end{minted}
+
+There are two major composite data types in Rust, \emph{structs} and \emph{enums}.
+Structs are exactly like structs in C -- a series of named and typed fields that
+are all stored inline. Fields can be accessed through the \emph{dot operator},
+as in most C-like languages.
+
+\begin{minted}{rust}
+// A struct called Foo
+struct Foo {
+    x: u32,         // x is a u32
+    y: bool,        // y is a boolean
+}
+
+// Get the x field of the given Foo
+fn get_x(data: Foo) -> u32 {
+    return data.x;
+}
+\end{minted}
+
+Enums, on the other hand, are a bit different from C.
+Like C enums, Rust enums are a simple way to represent a type whose value can be
+one of a small set of \emph{variants}. However Rust enums are
+\emph{tagged unions}, which means each variant can have arbitrary data associated
+with it.
+
+\begin{minted}{rust}
+// An enum called Bar with three variants A, B, and C
+// A contains a u32
+// B contains a boolean
+// C has no data associated with it
+enum Bar {
+    A(u32),
+    B(bool),
+    C,
+}
+\end{minted}
+
+In order to access the data in an enum's variant, one must pattern match against
+the enum to determine what state it is in. Matching and binding the data to a variable
+is performed as a single step to ensure that one does not access the data as if it
+were a different variant.
+
+\begin{minted}{rust}
+// An exhaustive match of all possible variants that the value
+// `data` could have.
+match data {
+    A(count) => {
+        return count;
+    },
+    B(is_one) => if is_one {
+        return 1;
+    } else {
+        return 0;
+    },
+    C => {
+        return -1;
+    },
+}
+
+// A fallible match of only a single variant. The code inside
+// an `if-let` is executed only if `data` matches the pattern.
+if let A(count) = data {
+    return count;
+}
+\end{minted}
+
+Rust uses $&$ for the address-of operator, as well as the pointer type
+itself. $*$ is the dereference operator. The dot operator will automatically
+dereference pointers as necessary.
+
+\begin{minted}{rust}
+let x: i32  = 0;      // x is an i32
+let y: &i32 = &x;     // y is a reference to an i32
+let z: i32  = *x;     // z is an i32 (copied from x)
+
+struct Foo { data: i32 }
+let x: Foo = Foo { data: 0 };
+let y: &Foo = &x;
+let x: i32 = y.data;  // automatic dereferencing with `.`
+
+\end{minted}
+
+
+Functions can be associated with a particular type by using an \emph{impl}
+block. This is just a convenience for grouping functionality, and does not
+imbue the code with any particular semantic. However it is necessary to
+implement \emph{traits} which are Rust's version of an interface.
+
+\begin{minted}{rust}
+struct Foo {
+    x: i32,
+    y: i32,
+}
+
+// Associate the following code with a Foo
+impl Foo {
+    // A static function, in this case a constructor.
+    // `new` has no special meaning in Rust, it's just a convention.
+    // Invoked as `Foo::new()`
+    fn new() -> Foo {
+        return Foo { x: 0, y: 1 };
+    }
+
+    // A member function that takes a Foo by-reference
+    // invoked as `some_foo.get_x()`
+    fn get_x(&self) -> i32 {
+        return self.x;
+    }
+
+    // A member function that takes a Foo by-value
+    // invoked as `some_foo.consume()`
+    fn consume(self) {
+        let id = self.get_x();
+        delete_the_database(id);
+    }
+}
+
+// An interface for things that can be converted to integers.
+trait ToInt {
+    fn to_int(&self) -> i32;
+}
+
+// Implementing that interface for Foo
+impl ToInt for Foo {
+    // Trait implementations are invoked just like
+    // any other member function
+    fn to_int(&self) -> i32 {
+        return self.x;
+    }
+}
+\end{minted}
+
+
+
+impl, fn, struct, enum, and trait can all be generic over arbitrary types.
+Generics in Rust are implemented in a similar manner to C++ templates, but
+are type-checked before any usage like Java generics. In order to facilitate
+this, generic arguments can be specified to implement particular traits.
+
+\begin{minted}{rust}
+// `Compare` is generic over some type T, allowing
+// implementors to be compared against multiple things.
+trait Compare<T> {
+    fn is_larger_than(&self, other: &T) -> bool;
+}
+
+// The `Generic` struct can be made for any type.
+struct Generic<T> {
+    data: T,
+}
+
+struct Concrete {
+    data: i32,
+}
+
+// Implementing the Compare trait concretely
+impl Compare<Concrete> for Concrete {
+    fn is_larger_than(&self, other: &Concrete) -> bool {
+        return self.data > other.data;
+    }
+}
+
+// Because Compare is generic, we can implement it multiple
+// times, as long as the generic arguments are different.
+impl Compare<i32> for Concrete {
+    fn is_larger_than(&self, other: &i32) -> bool {
+        return self.data > other;
+    }
+}
+
+// Implementing the Compare trait generically. We declare that
+// this implementation applies only if T itself implements Compare.
+impl<T: Compare<T>> Compare<Generic<T>> for Generic<T> {
+    fn is_larger_than(&self, other: &Generic<T>) {
+        return self.data.is_greater_than(&other.data);
+    }
+}
+
+// A function generic over any two types which can be compared.
+fn compare<R, L: Compare<R>>(left: &L, right: &R) -> bool {
+    return left.is_larger_than(right);
+}
+\end{minted}
+
+
+

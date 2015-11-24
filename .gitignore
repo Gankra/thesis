@@ -21,3 +21,4 @@
 *.mtc1
 *.out
 *.synctex.gz
+_minted-thesis/
