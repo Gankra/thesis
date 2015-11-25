@@ -1,41 +1,148 @@
 \chapter{Related Work}
 \label{ch:related}
 
-Since Rust's model of ownership is built up of well-establised parts, it should
+Since Rust's model of ownership is built up of well-established parts, it should
 surprise no one to learn that other languages have been built with similar
-designs. Of particular interest is C++, Cyclone, and Alms.
+designs. Of particular interest are C++ and Cyclone, the two languages closest
+to Rust.
+
+
 
 
 \section{Cyclone}
 
-The Cyclone progamming language is easily the closest relative to Rust. Cyclone
+The Cyclone programming language is easily the closest relative to Rust. Cyclone
 was a project with similar goals to Rust: make a language which can do all the
 low-level stuff normally reserved for C and C++, but make it safe. However, while
 Rust was designed as a completely new language Cyclone was designed to be a
 minimal addition on top of C. The ideal of Cyclone was that existing C code
 bases could be migrated to it relatively painlessly. This ultimately limited
-Cyclone
+Cyclone's semantics, resulting in a system that was more awkward to use than
+Rust.
 
-Although Rust was not originally based on Cyclone, the version of Rust that
-was stabilized can be seen as the direct descendant of the final version of
-Cyclone. Most notably, the region analysis employed by Rust and Cyclone for
-borrowed pointers is (as far as we can tell) identical. Where the two deviate
-is in affine typing. Since Cyclone intended to be a drop-in replacement for C,
-it was based largely around copy semantics, and not move semantics. However
-near the end of its development Cyclone introduced affine unique and
-reference-counted pointers in order to enable more flexible memory management.
-These types were built into the language, and no mechanism was provided to mark
-other types as affine. As such, affine typing couldn't be used as a mechanism to
-manage access to data, because all other data was still freely copyable. Instead,
-affine typing was used exclusively for allocation management.
+The Cyclone project was officially abandoned with its 1.0 release in 2006.
+Its official website links only to Rust for those interested in Cyclone's ideas.
+Rust's official website in turn cites Cyclone as an influence for region analysis.
+
+Early versions of Cyclone did not include affinity at all, as all types in C
+are always copyable. Cyclone also initially used region analysis primarily to
+manage dynamic pools of heap allocations, in much the same way that Tofte and Talpin's
+ML Kit work did.
+
+However the final release of Cyclone introduced several constructs
+that made it quite close to Rust 1.0. In particular, Cyclone introduced
+a \emph{unique pointer} type which could be manually allocated and freed. In order
+to avoid use-after-frees, these pointers had to be affine. Internal references to a
+unique pointer could be taken, and were tracked in much the same way internal references are
+tracked in Rust. Unfortunately, no general mechanism was exposed for making arbitrary
+values or types affine, making this only usable for managing allocations.
+Since the project was officially abandoned after the release of unique pointers, we
+do not believe that affinity was explored in any further depth in Cyclone.
+
+
+
 
 
 
 \section{C++}
 
-* Move semantics suck, need to mark the old value as ``moved'', access still permitted (uniqueptr)
-* Unmanaged pointers are wildly unsafe; safe abstractions can't expose them
-* C++ core guidelines (basically a different language, unproven, adhoc)
+C++ is the 8000-pound gorilla of systems programming in more ways than one. Not
+only is it one of the two major choices for projects that want low-level control,
+it's also incredibly complicated. Just like Cyclone, an initial
+desire to be a drop-in replacement for C resulted in significantly more complicated
+ownership semantics.
+
+C++'s initial solution to the problem of pervasive copying in C was to introduce
+the ability to overload the behaviour of assignment and copying. In C if a value
+semantically owns an allocated buffer, copying that value will create two values
+with the the same buffer pointer, which isn't correct. In C++, that type would
+probably overload copying to create a new allocation for the copy. This does
+indeed solve the problem, but introduces several new problems.
+
+The ability for every assignment and copy to execute arbitrary code makes it
+much more difficult to reason about correctness and performance of a piece of
+code. For instance, the statement `x = y` could involve allocating and copying
+a massive buffer. In addition, this creates a serious exception-safety problem,
+as now \emph{everything} can throw an exception.
+
+For these reasons, Rust has specifically avoided overloading copying and assignment,
+defining both to just always be a bitwise copy. This is possible in Rust because values
+that own resources are affine, so the compiler will appropriately mark them
+as unusable, preventing the duplicated pointer problem.
+
+To avoid the cost of expensive copies, C++11 introduced \emph{move semantics}.
+Moving a value to a new location allows the old location to be cannibalized for
+the resources it owns, with the new location taking ownership of them. This is
+the same basic idea as affine typing in Rust, but with two major differences: the
+old location must still contain a valid instance, and arbitrary code can be
+executed to complete the move. Once again, these constraints leave C++'s solution
+significantly more difficult to reason about and use correctly.
+
+C++'s unique\_ptr type is a pointer to an owned value on the heap. When moved,
+the old location's value is set to 0, indicating that there is no allocation.
+Dereferencing such a pointer is Undefined Behaviour, but because the value is
+``valid'', C++ will do nothing to prevent someone from doing this:
+
+\begin{minted}{C++}
+#include <iostream>
+#include <memory>
+
+int main() {
+    auto x = std::make_unique<int>(0);  // x owns the allocation
+    auto y = std::move(x);              // now y owns the allocation
+    std::cout << *x;                    // dereference null x; oops!
+    std::cout << *y;
+}
+\end{minted}
+
+Even when passed the most pedantic warning flags, the latest version of clang
+happily compiles this program without any indication that something bad could
+happen. The equivalent Rust program fails to compile:
+
+\begin{minted}{rust}
+fn main() {
+    let x = Box::new(0);
+    let y = x;
+    println!("{}", x);
+    println!("{}", y);
+}
+\end{minted}
+
+\begin{minted}{text}
+<anon>:4:20: 4:21 error: use of moved value: `x` [E0382]
+<anon>:4     println!("{}", x);
+                            ^
+\end{minted}
+
+It can also do less work, because x does not need to be overwritten in
+Rust. The fact that x has been moved out of can almost always be statically
+tracked.
+
+It should be noted that C++'s solution does have one explicit advantage: it
+can encode types which have significant locations. For instance, one could
+construct a linked list with nodes stored on the stack in C++, and have the
+move constructor for a node update the pointers of its neighbors. In Rust
+this design would never be sound, because a value isn't ever informed when it's
+moved. However it is our opinion that this is a relatively minor loss compared
+to the other benefits of Rust's solution.
+
+C++ has no solution to the problem of borrowed pointers. Any interface that
+exposes an untracked pointer or reference is fundamentally unsafe, because they
+can be made to dangle. If C++ code wishes to be safer, this necessarily implies
+copying or moving the data, which is often less efficient than passing a reference
+(especially because copies and moves invoke arbitrary code).
+
+However Bjarne Stroustrup, the creator of C++, is currently working on a project
+to resolve this issue. The \emph{C++ Core Guidelines} are an attempt to extend
+C++ with some new semantics, and then identify a safe subset which can be compiler
+verified. This project was only recently announced, so not much analysis of the
+system exists.
+
+Our understanding is that rather than using the well-established system of
+region analysis, it's based on a custom system that maintains lists of what
+points to what. From an external perspective it seems to behave in much the
+same way as Rust, and requires similar annotations. Only time will tell how
+this system stands up, or if it is sound at all.
 
 
 
@@ -44,17 +151,17 @@ affine typing was used exclusively for allocation management.
 
 
 
-\section{Alms}
+% \section{Alms}
 
-Alms has affine types, but exposes a more advanced mechanism than regions. It's
-sufficient to implement regions as a library notion.
-
-
+% Alms has affine types, but exposes a more advanced mechanism than regions. It's
+% sufficient to implement regions as a library notion.
 
 
-\section{Vault}
 
-Vault uses linear typing instead of affine typing.
+% TODO?
+% \section{Vault}
+
+% Vault uses linear typing instead of affine typing.
 
 
 
