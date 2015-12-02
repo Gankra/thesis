@@ -284,7 +284,7 @@ let mut data = 0;
     // Allowed to read through them, and still read the value directly
     println!("{} {} {}", data_ref1, data_ref2, data);
 
-    // Note allowed to mutate through them (compiler error)
+    // Not allowed to mutate through them (compiler error)
     // *data_ref1 += 1;
 }
 
