@@ -1,20 +1,161 @@
 \chapter{Limitations of Ownership}
 \label{ch:limits}
 
-TODO: this section needs to cleaned up and refactored (bitrot)
-TODO: talk about thread::scoped?
-TODO:
 
-We've seen that ownership allows us to cleanly model several
-problems, preventing incorrect usage without runtime overhead. In particular,
-ownership is very good at preventing the use-after and view-invalidation
-classes of errors. This is because ownership's primary role is to prevent data
-from being accessed at inappropriate times. However ownership is unable to
-properly model the opposite problem: \emph{requiring} data be accessed, as is the
-case for leaks.
+We've seen that ownership allows us to cleanly model all of the major classes
+of error that we were interested in solving. This is because ownership's primary
+role is to prevent data from being accessed at inappropriate times, and this is
+what all of those problems boiled down to. However ownership is unable to
+properly model some problems and can severely limit some designs.
 
-Leaks aren't well-modeled by ownership because Rust is based on \emph{affine}
-semantics, which allow us to forget about values at any time.
+
+
+
+
+\section{Cyclic References}
+
+Ownership is severely biased towards unique ownership. This implies that data
+is laid out in a tree-like manner, without any cycles. If one's problem can
+be modeled without referential cycles, then ownership is pleasant and easy to
+use. Otherwise, ownership becomes quite burdensome.
+
+Any naive attempt to create a graphs, tree with parent pointers, doubly-linked
+list, or a value that contains pointers to itself will quickly lead to the
+compiler shutting everything down. This is necessitated by the fact that Rust
+allows memory can be manually managed, but demands that pointers can never dangle.
+Anyone who has tried to build a pointer-based data structure knows all too well
+how easy it is to forget to update some of the pointers after a node is removed.
+
+Therefore Rust refusing to compile this sort of code is \emph{correct}. Pointer-based
+data structures are wildly unsafe without garbage collection, and are error-prone
+even \emph{with} garbage collection. Still, they're useful, and people want to write
+them. Questions about this problem are so frequent that we wrote an entire book
+on the topic \cite{too-many-lists}.
+
+The most straight-forward solution to this problem is to embrace garbage collection.
+Although Rust doesn't provide any serious automatic tracing collector, it does
+provide manual reference counted pointers (Rc). Rc is Rust's primary mechanism for
+\emph{shared ownership}. No Rc is the true owner of the pointed-to data. Instead,
+all Rcs have equal ownership. Because the data pointed to by an Rc is always
+potentially shared, only immutable shared access is provided. On its own,
+this significantly limits the usefulness of Rc -- it's not possible to construct
+a cycle with strict evaluation and immutability!
+
+The solution to this problem is interior mutability. With interior mutability
+and reference counting, one can safely build and manage cyclic data structures
+at the cost of reference counting and runtime ownership checking. This also
+comes at a significant ergonomic cost. Compare these equivalent Rust and
+Java programs, which just make a cycle of two nodes:
+
+\begin{minted}{rust}
+use std::rc::Rc;
+use std::cell::RefCell;
+
+// Magical annotation to get a Node::default constructor
+#[derive(Default)]
+struct Node {
+    data: u32,
+    next: Option<Rc<RefCell<Node>>>,
+    prev: Option<Rc<RefCell<Node>>>,
+}
+
+fn main() {
+    let a = Rc::new(RefCell::new(Node::default()));
+
+    let b = Rc::new(RefCell::new(Node {
+        data: 1,
+        next: Some(a.clone()),
+        prev: Some(a.clone()),
+    }));
+
+    a.borrow_mut().next = Some(b.clone());
+    a.borrow_mut().prev = Some(b.clone());
+}
+\end{minted}
+
+\begin{minted}{java}
+class Main {
+    public static void main (String[] args) {
+        class Node {
+            int data;
+            Node next;
+            Node prev;
+        }
+
+        Node a = new Node();
+
+        Node b = new Node();
+        b.data = 1;
+        b.next = a;
+        b.prev = a;
+
+        a.next = b;
+        a.prev = b;
+    }
+}
+\end{minted}
+
+The Rust program is completely bogged down in boiler-plate to properly create
+the pointers, copy them, and update the contents. This is to some extent desirable
+as Rust likes to make costs explicit, and node-based data structures are quite
+heavyweight for low level programming. Defaulting to pervasive garbage collection
+and nullable everything ends up being quite nice for this use case.
+
+The primary workaround for this problem is to use arrays and indices instead of
+pointers. For many workloads, this is completely sufficient, and even more
+efficient than a naive graph. As a rough example:
+
+\begin{minted}{rust}
+#[derive(Default)]
+struct Node {
+    data: u32,
+    next: Option<usize>,
+    prev: Option<usize>,
+}
+
+fn main() {
+    let mut graph = Vec::new();
+    graph.push(Node::default());
+    graph.push(Node {
+        data: 1,
+        next: Some(0),
+        prev: Some(0),
+    });
+
+    graph[0].next = Some(1);
+    graph[0].prev = Some(1);
+}
+\end{minted}
+
+This is, in essence, completely abandoning the borrow checker. It only reasons
+about pointers, and we're using indices into the array. This allows us to
+completely invalidate nodes by removing the things they ``point'' to, and even
+perform what is logically equivalent to a use-after free by removing a node
+and then reinserting a node. However we're unable to violate
+memory safety in this manner, because the indices will be bounds checked.
+We'll just get nonsensical results, which is of course quite easy to do with
+any node-based structure.
+
+The petgraph library \cite{petgraph} provides a more complete interface for
+building and working with graphs in Rust. Internally, it just boils down to
+this basic design. Graphs are an array of nodes and an array of edges,
+and nodes and edges just store indices into those arrays. This structure is
+used by the Rust compiler itself (which is written entirely in Rust).
+
+Of course, this is only necessary if one wants to implement cyclic structures
+safely. It's entirely possible to implement them exactly as they would be in C
+in all their unsafe glory. This is how Rust's LinkedList and BTreeMap
+collections are implemented. As usual, the unsafety is easily hidden behind
+a reasonable and efficient public interface.
+
+
+
+
+
+\section{Leaks}
+
+Leaks aren't well-modeled by Rust's ownership system because it's based on affine
+types, which allow us to forget about values at any time.
 In order to encode that a value must be properly consumed, we need to be able
 to express that a value must be used \emph{exactly} once. Types with this property
 are said to be \emph{linear}.
@@ -31,16 +172,15 @@ a pointer to that allocator. The type therefore has insufficient information
 to clean itself up, requiring the allocator be passed to it. A more robust linearity
 system would allow us to encode this by requiring the destructor be explicitly invoked with
 the allocator as an argument. Destructors also can't return anything to indicate
-success or failure.
+success or failure, which is problematic for the automatic closing of files.
 
-That said, destructors do a great job for many types. Collections and files
-have a single ``natural'' final operation that requires no additional context.
-Collections free their allocations and Files close their file descriptors.
+That said, destructors do a great job for many types. Collections and connections
+have a natural final operation that requires no additional context.
+Collections free their allocations and connections close themselves.
 Destructors also have the distinct advantage over more general linearity in that
 they compose well with generic code. If some generic code wants to drop a value
 on the ground, it can always do this knowing any linear requirements will be
-satisfied by the destructor. Destructors provide a uniform interface with no
-context required precisely \emph{because} they aren't general.
+satisfied by the destructor.
 
 Unfortunately, ensuring that destructors execute is a nasty problem.
 At the limit, hardware can fail and programs can abort. We just need to live
@@ -49,33 +189,42 @@ rendered irrelevant by the program ending, or the operating system will automati
 clean them all up itself.
 
 Even accepting those circumstances, strict
-linearity is a bit of a pain. In particular, it is desirable to be able to
-create reference-counted cycles of types with destructors. Even if all references to
-such a cycle are lost, it will keep itself alive, leaking the destructors
-themselves. Further, it is sometimes desirable to manually prevent a destructor
+linearity can be burdensome. In particular, it is desirable to be able to
+create reference-counted cycles of types that have destructors. If all references to
+such a cycle are lost it will keep itself alive, leaking the destructors it
+owns. Further, it is sometimes desirable to manually prevent a destructor
 from running, particularly when decomposing a value into its constituent parts. For
 instance, one may wish to downgrade a pointer that would normally free its allocation
 to a raw pointer, perhaps to pass to a C API.
 
 There are various solutions to this problem, but most languages that include
-destructors (C++, Rust, D, C\#, Java, ...) generally accept that sometimes
+destructors (C++ C\#, Java, D, ...) generally accept that sometimes
 they won't run. They're convenient and generally
 reliable, but if one \emph{really} needs something to happen, they can't always be
-relied on. For Rust in particular, one can't pass a value with a destructor to
-an arbitrary third-party and rely on the destructor to be called, even if
-the borrows it held have expired.
+relied on. Rust also takes this stance. In particular, one can't pass a value with
+a destructor to an arbitrary third-party and rely on the destructor to be called,
+even if the compiler believes any borrows they held have expired.
 
-As a concrete example, we can consider Rust's `drain` interface. `Drain` is a
+It should however be noted that this is \emph{completely} a library decision,
+and not a language one. Rust's standard library decided that leaking destructors
+was a safe operation, and safe interfaces need to assume it can happen. However
+there exists an alternative standard library that adopted a different stance,
+making this an unsafe operation \cite{rust-fork}. We won't dwell on the details,
+but the basic idea is to encode leak-safety as an unsafe trait like the standard
+library does for thread-safety.
+
+As a concrete example of dealing with the ability to have a destructor leaked,
+we can consider Rust's \emph{drain} interface. Drain is a
 utility for efficiently performing bulk removal from the middle of a growable
 array. Arrays require their elements to be stored contiguously, so removing
 from the middle of one generally requires the elements after it to be
 shifted back to fill the hole. Doing this repeatedly is incredibly expensive,
 so it's desirable to be able to defer the shift until we are done removing
 elements. Doing this means the array is in an unsound state while the
-removals are happening. We don't want this state to be observable by the client.
+removals are happening, and we don't want this to be observable by the client.
 
 One solution to this problem is to require the caller to pass in a
-destination buffer for all the elements that will be removed. Then `drain` can
+target buffer for all the elements that will be removed. Then `drain` can
 just run to completion without ever yielding control to the client. Unfortunately,
 this is quite inflexible.
 
@@ -116,45 +265,122 @@ Rather than relying on the destructor to put the array in a sound state,
 we will \emph{start} the drain by putting the array into an incorrect but otherwise
 sound state, and rely on the destructor to put the array into the correct state.
 If the user of our interface prevents the destructor from running,
-they'll get a poisoned array which will probably cause their program to behave
-incorrectly, but be unable to violate memory safety.
+they'll get the incorrect array which will probably cause their program to behave
+incorrectly, but be unable to violate memory safety. Since no reasonable program
+will ever trigger this, the possibility of incorrect state isn't particularly
+worrying.
 
-In the case of `drain`, the poison is setting the length of the array to be zero.
+In the case of `drain`, the incorrect state is setting the length of the array to be zero.
 The destructor in turn just sets the length to the correct value (which it would
 have done anyway). So the overhead for this scheme is zeroing out a single
 integer, which is completely negligible considering the operation we're performing.
-The consequence of this poison is that all the elements in the array will be
-lost if the destructor is leaked. There's a certain fairness to this: you leak me,
-I leak you!
+The consequence of this is that all the elements in the array will be
+lost if the destructor is leaked. There's a certain fairness to this:
+\emph{you leak me, I leak you!} We call this \emph{leak amplification}.
 
-Not all interfaces have such a convenient poison though. If this is the case, one
-may instead ensure some code executes by inverting the control. Instead of our
-code having to execute in the user's function, we can require the user's code
-to execute in ours. In the case of drain, we can require the user to pass a
-function that will be passed a \emph{pointer} to the iterator, preventing them from
-gaining true ownership of the iterator. We can then guarantee that the iterator's
+Not all interfaces have such a convenient state though. If this is the case, one
+may instead ensure some code executes by using an internal interface. Rather
+than returning an object that can be forgotten, we can require the user to pass a
+function that will be passed a \emph{pointer} to the object, preventing them from
+gaining true ownership of it. We can then guarantee that the object's
 destructor always runs by dropping it in our own function. In fact, because we
 always control the value, we don't even need to use a destructor to ensure the
-cleanup code runs.
+cleanup code runs. We can just have that code at the end of the function.
+
+
+
+
+
+\section{Scoped Threads}
+
+With that said, we finally have all the tools to understand the interface we
+demonstrated at the start of this thesis. Scoped threads allow data to be borrowed
+by another thread, and even mutated. As we discussed previously, this is quite
+dangerous, because borrows don't understand concurrency. So how does this work?
+The initial scoped thread interface was designed to work as follows:
 
 \begin{minted}{rust}
-let mut arr = vec![0, 1, 2, 3, 4];
+use std::thread;
 
-// Drain out elements 1 to 3 (exclusive).
-// `drain` has no result, but instead passes a
-// pointer to a Drain iterator that it owns.
-arr.drain(1..3, |iter| {
-    // arr is statically inaccessible here
-    for x in iter {
-        println!("{}", x);
+fn main() {
+    // An array of integers, stored on the stack
+    let mut data = [1, 2, 3];
+
+    {
+        // An array of thread join guards. We will destroy this
+        // when we want to block on the threads completing.
+        let mut guards = Vec::new();
+
+        // Get pointers to each element in the array
+        for x in &mut array {
+            // Spawn a thread to increment this element of the array
+            let guard = thread::scoped(move || {
+                *x += 1;
+            });
+            guards.push(guard);
+        }
+
+        // guards go out of scope here, so we block on all the child
+        // threads joining.
     }
-}); // backshifting is performed once here
-// arr is now accessible again
 
-// 1 and 2 are now gone
-assert_eq!(arr, vec![0, 3, 4]);
+    // Array is now done being modified, and safe to read
+    println!("{:?}", array);
+}
 \end{minted}
 
-This design is a bit less ergonomic and flexible, but it can easily cover the
-common cases.
+The interesting piece of this API was the guards that were returned by
+by the scoped function. Each guard claimed to store the closure the
+scoped function was passed. This in effect made them borrow all of the
+data that the closure could access. So as long as the guard existed, nothing
+could interfere with data that the spawned threads were accessing. No magic
+here, just the borrow checker doing its job.
+
+However the borrows expire when the guard goes away, so the guard needs to
+make sure that the spawned thread is no longer running. The only way to do
+that is to wait for the thread to finish, and that's exactly what a guard's
+destructor did. But we have a problem: leaking the destructor. If the destructor
+is prevented from running, the borrow checker will believe all borrows have
+expired, and allow the array to be accessed while it's still potentially
+being mutated on another thread.
+
+Unfortunately for the scoped interface, there's no valid leak amplification strategy.
+We would have to somehow invalidate all the data that was borrowed, but that's
+not possible. So we must use an internal interface, resulting in the example
+we saw in the introduction:
+
+\begin{minted}{rust}
+[dependencies]
+crossbeam = 0.1.6
+
+-----
+
+extern crate crossbeam;
+
+fn main() {
+    let mut array = [1, 2, 3];
+
+    // scope is essentially an `&mut Vec<Guard>`
+    crossbeam::scope(|scope| {
+        for x in &mut array {
+            // scope.spawn is essentially `guards.push(guard)`
+            scope.spawn(move || {
+                *x += 1;
+            });
+        }
+    });
+
+    println!("{:?}", array);
+}
+\end{minted}
+
+This design is a bit less flexible. In particular, one loses control of how
+the guards and stored and when they are destroyed. A more complicated design
+could in principle expose that functionality, but we haven't yet found the need
+to do so.
+
+Regardless, the end result is impressive: in spite of the limitations of ownership
+being a fairly simple and limited system, we can use it to safely share data stored
+on the stack of one thread with several other threads without unnecessary
+synchronization!
 

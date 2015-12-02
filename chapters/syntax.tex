@@ -5,9 +5,16 @@ Since this thesis is focused on Rust in particular, it will include a lot of
 Rust source code. Although our code is slightly unidiomatic
 in order to avoid overloading the reader with the finer details of Rust's syntax
 and semantics, this section exists for readers who are completely unfamiliar
-with Rust. If one is interested in learning Rust properly,
+with Rust. A significant portion of Rust's syntax and semantics will be
+explained as it's needed throughout the thesis, but the following doesn't
+really fit in anywhere. If one is interested in learning Rust properly,
 \href{https://doc.rust-lang.org/book/}{\emph{The Rust Programming Language}}
 is the officially recommended book, as it is free and written by the Rust developers.
+
+
+
+
+\section{Basic Syntax}
 
 First and foremost, Rust has the same basic control constructs and operators
 as every other C-style language. \emph{if}, \emph{else}, \emph{while}, and
@@ -125,6 +132,11 @@ let x: i32 = y.data;  // automatic dereferencing with `.`
 \end{minted}
 
 
+
+
+
+\section{Generics and Implementations}
+
 Functions can be associated with a particular type by using an \emph{impl}
 block. This is just a convenience for grouping functionality, and does not
 imbue the code with any particular semantic. However it is necessary to
@@ -213,9 +225,12 @@ impl Compare<i32> for Concrete {
 }
 
 // Implementing the Compare trait generically. We declare that
-// this implementation applies only if T itself implements Compare.
-impl<T: Compare<T>> Compare<Generic<T>> for Generic<T> {
-    fn is_larger_than(&self, other: &Generic<T>) {
+// this implementation applies only if T itself implements Compare
+// with a `where` clause.
+impl<T> Compare<Generic<T>> for Generic<T>
+    where T: Compare<T>
+{
+    fn is_larger_than(&self, other: &Generic<T>) -> bool {
         return self.data.is_greater_than(&other.data);
     }
 }
@@ -223,6 +238,88 @@ impl<T: Compare<T>> Compare<Generic<T>> for Generic<T> {
 // A function generic over any two types which can be compared.
 fn compare<R, L: Compare<R>>(left: &L, right: &R) -> bool {
     return left.is_larger_than(right);
+}
+\end{minted}
+
+Traits implementations may have specific types associated with them.
+For instance, if we wanted to make Compare incredibly generic, we could
+make the result of \mintinline{rust}{is_larger_than} be defined by the
+implementor:
+
+\begin{minted}{rust}
+trait Compare<T> {
+    // The type of Result must be given by the implementor
+    type Result;
+
+    // And must be used as the return type for is_larger_than
+    fn is_larger_than(&self, other: &T) -> Self::Result;
+}
+
+impl<T> Compare<Generic<T>> for Generic<T>
+    where T: Compare<T>
+{
+    // My result type is bool
+    type Result = bool;
+
+    fn is_larger_than(&self, other: &Generic<T>) -> bool {
+        return self.data.is_greater_than(&other.data);
+    }
+}
+\end{minted}
+
+Associated types are essentially the same as generic trait arguments,
+except that they cannot be declared independently. Because Compare is
+Generic over T, a type can declare that it can be compared to different things.
+Previously we used this to specify that a Concrete could be compared to another
+Concrete, or an i32. However associated types don't let us do this. The associated
+types must be uniquely determined by the generic arguments. If a trait has no
+generic arguments, but does have associated types, that means it can only be
+implemented once per type.
+
+
+
+
+
+\section{Closures}
+
+Closures are anonymous functions that can refer to local variables that are
+defined outside of the function. Closures are declared with pipes, as follows:
+
+\begin{minted}{rust}
+fn main() {
+    let mut x = 0;
+    // A closure that takes an `increment`
+    // and increases `x` by that amount.
+    let mut func = |increment: i32| { x += increment; };
+
+    func(1);    // x += 1;
+    func(2);    // x += 2;
+}
+\end{minted}
+
+How values should be captured is generally inferred based on usage, but Rust
+will only do this for capturing things by-reference. To indicate that something
+should be captured by value, the move keyword must be used:
+
+\begin{minted}{rust}
+fn main() {
+    let x = 0;
+
+    // A closure that takes an `increment`,
+    // increases `x` by that amount, and returns it.
+    // Effectively takes a snapshot of what `x` was
+    // when the closure was made.
+    let func = move |increment: i32| {
+        return x + increment;
+    };
+
+    let y = func(1);
+    let z = func(2);
+
+    // prints 1
+    println!("{}", y);
+    // prints 2, because each call uses a fresh copy of `x`
+    println!("{}", z);
 }
 \end{minted}
 

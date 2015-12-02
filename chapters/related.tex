@@ -12,25 +12,27 @@ to Rust.
 \section{Cyclone}
 
 The Cyclone programming language is easily the closest relative to Rust. Cyclone
-was a project with similar goals to Rust: make a language which can do all the
+was a project with similar goals to Rust: make a language that can do all the
 low-level stuff normally reserved for C and C++, but make it safe. However, while
-Rust was designed as a completely new language Cyclone was designed to be a
+Rust was designed as a completely new language, Cyclone was designed to be a
 minimal addition on top of C. The ideal of Cyclone was that existing C code
-bases could be migrated to it relatively painlessly. This ultimately limited
+could be migrated to it relatively painlessly. This ultimately limited
 Cyclone's semantics, resulting in a system that was more awkward to use than
 Rust.
 
 The Cyclone project was officially abandoned with its 1.0 release in 2006.
-Its official website links only to Rust for those interested in Cyclone's ideas.
-Rust's official website in turn cites Cyclone as an influence for region analysis.
+Its official website links only to Rust for those interested in Cyclone's ideas
+\cite{cyclone-web}. Rust's official website in turn cites Cyclone as an
+influence for region analysis \cite{rust-stolen}.
 
 Early versions of Cyclone did not include affinity at all, as all types in C
 are always copyable. Cyclone also initially used region analysis primarily to
 manage dynamic pools of heap allocations, in much the same way that Tofte and Talpin's
-ML Kit work did.
+MLKit work did. In order to be sound, these early versions had to make C's $free$ function
+a no-op, leaking the memory \cite{grossman2002region}.
 
 However the final release of Cyclone introduced several constructs
-that made it quite close to Rust 1.0. In particular, Cyclone introduced
+that made it quite close to Rust 1.0 \cite{swamy2006safe}. In particular, Cyclone introduced
 a \emph{unique pointer} type which could be manually allocated and freed. In order
 to avoid use-after-frees, these pointers had to be affine. Internal references to a
 unique pointer could be taken, and were tracked in much the same way internal references are
@@ -133,16 +135,18 @@ copying or moving the data, which is often less efficient than passing a referen
 (especially because copies and moves invoke arbitrary code).
 
 However Bjarne Stroustrup, the creator of C++, is currently working on a project
-to resolve this issue. The \emph{C++ Core Guidelines} are an attempt to extend
+to resolve this issue. The \emph{C++ Core Guidelines} \cite{cppcore} are an attempt to extend
 C++ with some new semantics, and then identify a safe subset which can be compiler
-verified. This project was only recently announced, so not much analysis of the
+verified. This project was announced only a few months ago, so little analysis of the
 system exists.
 
 Our understanding is that rather than using the well-established system of
 region analysis, it's based on a custom system that maintains lists of what
-points to what. From an external perspective it seems to behave in much the
-same way as Rust, and requires similar annotations. Only time will tell how
-this system stands up, or if it is sound at all.
+points to what. For simple cases it seems to behave in much the
+same way as Rust's system, and requires similar annotations. However we have been
+unable to get in touch with the developers of the system to discuss the details,
+which are unclear from the publicly available details. Only time will tell
+what becomes of this experiment.
 
 
 

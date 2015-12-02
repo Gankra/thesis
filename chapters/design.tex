@@ -8,12 +8,15 @@ In order to achieve all of these goals, the API itself must be designed in
 terms of data trust. If the API isn't designed with trust and ownership in mind,
 safety, efficiency, or usability will likely be compromised.
 
+We have already seen how ownership eliminates use-afters, view invalidation,
+and data races. However we have not yet seen how indexing is addressed.
+
 
 
 
 \section{Indexing}
 
-Let's return to the problem of indexing out of bounds. Arrays are overwhelmingly
+Arrays are overwhelmingly
 the most common and important data structure in all of programming. Basically every
 program will do some array processing -- even \emph{hello world} is just copying an
 array of bytes to stdio. Array processing is so pervasive that Rust provides no
@@ -29,14 +32,14 @@ novel there.
 Slightly more interesting is how Rust provides an explicitly checked option.
 Explicit checking is most commonly done through the Option and Result types
 in Rust. If an operation can fail, it will return one of these types.
-These types are simple tagged unions, which means they can contain different
+These types are tagged unions, which means they can contain different
 types at runtime. `Option<T>` can be `Some(T)` or `None`, while `Result<T, E>`
 can be `Ok(T)` or `Err(E)`. By owning the data they wrap, these types can control
 how it's accessed. Both of them provide a multitude of ways to access their
 contents in an explicitly checked way.
 
-So if we want to explicitly handle indexing failing, we can do any of the
-following:
+Explicitly checked indexing returns an Option, so if we want to explicitly
+handle the failure condition, we can do any of the following:
 
 \begin{minted}{rust}
 // Exhaustively match on the possible choices
@@ -55,10 +58,10 @@ array.get(index).map(|elem| {
     println!("Elem: {}", elem);
 });
 
-// ... And more
+// ... and more
 \end{minted}
 
-It's worth noting checked indexing is surprisingly performant here.
+It's worth noting that checked indexing is surprisingly performant here.
 First off, these bounds checks are by definition trivially predictable in a
 correct program. So the overhead at the hardware level is quite small. That said,
 having to do the checks at all is the worst-case. A good optimizing compiler
@@ -87,8 +90,8 @@ perhaps the most serious cost of bounds checks: inhibiting other optimizations.
 If we really care about avoiding this cost, we can't just rely on the optimizer
 to magically figure out what we're doing, we need to actually not do bounds
 checking. We can use the unsafe unchecked indexing, but we'd rather not resort
-to unsafe code unless totally necessary. What we really want here is the final
-solution: the paranoid one.
+to unsafe code unless totally necessary. What we really want here is Rust's final
+solution to indexing: the paranoid one.
 
 This code is hard to optimize safely
 because we've pushed too much of the problem at hand to the user of the array.
@@ -109,12 +112,12 @@ This produces the same optimized code as the original indexing-based solution,
 but more importantly, it's more robust to transformations. Iterating
 backwards now also produces vectorized unchecked code, because the optimizer
 has less to prove about the program's behaviour. As an added bonus, client code
-ends up simplified as well, as all the error-prone iteration boiler plate has
+ends up simplified as well, as all the error-prone iteration boilerplate has
 been eliminated.
 
-Of course, this doesn't come for free: iterators are effectively special-casing
+Of course, this doesn't come for free. Iterators are effectively special-casing
 certain access patterns at the burden of the interface's implementor. In the
-case of iterators, this burden is well justified. Linear iteration
+case of iterators, this burden is completely justified. Linear iteration
 is incredibly common, and therefore well worth the specialization. But if the
 user wants to binary search an array without bounds checks, iterators do them no
 good.
@@ -136,8 +139,8 @@ interfaces (what's the raw API for searching an ordered map?).
 It is relatively common to use maps as \emph{accumulators}. The most trivial example
 of this is using a map to count the number of occurrences of each key. Accumulators
 are interesting because special logic must usually be performed when a key is
-seen for the first time. In the case of a key counter, the first time we see a key
-we want to insert the value 1, but each subsequent time we see the same key,
+seen for the first time. In the case of counting keys, the first time we see a key
+we want to insert the value 1, but each subsequent time we see that key
 we want to instead increment the count.
 
 Naively, one may write this as follows:
@@ -163,18 +166,18 @@ which works well enough:
 *map.find_or_insert(key, 0) += 1;
 \end{minted}
 
-However for some kinds of accumulators, the default value might be expensive to
-create. As such, we'd like to avoid constructing it unless we know it's required.
-And so, \mintinline{rust}{find_or_insert_with} was provided, which took a \emph{function} that computed
-the default value:
+However the default value might be expensive to create for some kinds of accumulators.
+As such, we'd like to avoid constructing it unless we know it's required.
+And so, \mintinline{rust}{find_or_insert_with} was provided, which took a
+\emph{function} that computed the default value:
 
 \begin{minted}{rust}
-*map.find_or_insert(key, expensive_default_func) += 1;
+*map.find_or_insert_with(key, expensive_default_func) += 1;
 \end{minted}
 
 However this interface had the problem that it could be difficult to tell which
-case was found. This is where the interface became unwieldy. In order to support
-this, a function that took \emph{two} functions was created, one for each case. However this
+case was found. This is where things started to fall apart. In order to support
+this, a function that took \emph{two} functions was created; one for each case. However this
 design was problematic because each function
 may want to capture the same affine data by-value. We know this is sound because only
 one of the two functions will be called, but the compiler doesn't understand that.
@@ -187,7 +190,7 @@ map.update_with_or_insert_with(key, capture, compute_default_func, update_existi
 
 While the first APIs seemed quite reasonable, this final API was nightmarish. Worse,
 it didn't even accommodate all the use cases people came up with. Some wanted
-to possible \emph{remove} the key from the map under some conditions, which would necessitate
+to \emph{remove} the key from the map under some conditions, which would necessitate
 a whole new family of update functions. The problem is that this design is what the
 Rust community calls an \emph{internal} interface. Internal interfaces require the client
 to execute \emph{inside} the interface's own code by passing functions that should be
@@ -195,9 +198,9 @@ called at the appropriate time. In some cases, internal interfaces can be conven
 or even more efficient, but they generally suffer from how little control they give
 the client.
 
-We solved this inflexibility by instead providing an \emph{external} interface. Where
-internal interfaces execute the entire algorithm at once, invoking the client to
-handle important cases, an external interface requires the client to drive the
+We solved this inflexibility by instead providing an \emph{external} interface.
+Internal interfaces execute the entire algorithm at once, invoking the client to
+handle important cases. An external interface instead requires the client to drive the
 execution of the algorithm manually. At each step, the algorithm returns some
 value that summarizes the current state, and exposes relevant operations.
 
@@ -205,9 +208,9 @@ For the accumulator problem, we created the \emph{entry} API. The basic idea of 
 entry API is simple: execute the insertion algorithm up until we determine
 whether the key already existed. Once this is known, take a \emph{snapshot} of
 the algorithm state, and store it in a tagged union with two states: Vacant or
-Occupied. The consumer of the interface must then match on union to determine
-which state the algorithm is in. The Vacant state exposes only one operation:
-`insert`, as this is the only valid operation to perform on an empty entry.
+Occupied. The consumer of the interface must then match on the union to determine
+which state the algorithm is in. The Vacant state exposes only one operation,
+insert, as this is the only valid operation to perform on an empty entry.
 The Occupied state, on the other hand, exposes the ability to overwrite, remove,
 or take a pointer to the old value.
 
@@ -254,18 +257,28 @@ grow; adding conveniences for idioms, rather than adding nightmares for special 
 One important question about this interface is whether it's \emph{sound}. After all,
 we're taking a snapshot of the internal state of a collection, and then yielding
 control to the client explicitly to mutate the collection. Indeed, in many languages
-this interface would be dangerous without additional guards, for exactly the same
+this interface would be dangerous without runtime checks for exactly the same
 reason that iterators are dangerous. And for exactly the same reason that iterators
-can safely be used without any runtime checking, entry can be used without any
-runtime checking: ownership!
+can safely be used without any runtime checks, so can entries: ownership!
 
 An Entry mutably borrows the map it points into, which means that while it
 exists, we know that it has exclusive access to the map. It can trust that the
 algorithmic state it recorded will never become inconsistent. Further, any operation
 that the entry exposes that would invalidate itself (such as inserting into
-a vacant entry or removing from an occupied entry) consumes itself by-value,
+a vacant entry or removing from an occupied entry) consumes it by-value,
 preventing further use.
 
+The comparison to iterators is particularly apt here because iterators
+are yet another external interface. They require the consumer to repeatedly
+request the next element, returning an Option that is None if the iteration
+is complete. Like entries, iterators in Rust were once provided as an internal
+interface. Iteration required a function to be passed to the iterator, which
+it would then execute on every element.
+
+The most fundamental weakness of this design is that it was impossible to
+concurrently iterate over two sources at once. Each iterator could only
+be executed to completion at once. With external iterators, concurrent iteration
+is simply alternating which iterator to ask for the next element.
 
 
 
@@ -273,8 +286,10 @@ preventing further use.
 \section{Hacking Generativity onto Rust}
 
 Given the array iteration example, one might wonder if it's sufficient for the
-array to simply provide the indices. This would be a more composable API with
-a reduced implementation burden. Perhaps this API could be used something like this:
+array to simply provide the indices, and not immediately convert them into elements.
+This would be a more composable API with a reduced implementation burden.
+
+Perhaps this API could be used something like this:
 
 \begin{minted}{rust}
 let mut sum = 0;
@@ -286,7 +301,7 @@ for i in arr.indices() {
 Unfortunately, this doesn't immediately get us anywhere. This is no different
 than the original example which produced its own iteration sequence. As soon
 as the array loses control of the yielded indices, they are \emph{tainted} and all
-trust is lost. After all, they're just integers, which can come from anywhere.
+trust is lost. After all, they're just integers, and integers can come from anywhere.
 One may consider wrapping the integers in a new type that doesn't
 expose the values to anyone but the array, preventing them from being
 tampered with, but this is still insufficient unless the \emph{origin} of
@@ -301,16 +316,18 @@ for i in arr1.indices() {
 }
 \end{minted}
 
-This is a problem most static type systems generally struggle to model, because
+This is a problem many static type systems generally struggle to model, because
 they don't provide tools to talk about the origin or destination of a particular
 instance of a type. In addition, even if we could prevent this, we would have to
 deal with the problem of temporal validity. The indices into an array are only
 valid as long as the array's length doesn't change:
 
 \begin{minted}{rust}
+// get a trusted index into the array
 let i = arr.indices().next().unwrap();
+// shrink the array
 arr.pop();
-// index arr with an outdated index
+// index the array with an outdated index
 let x = arr[i];
 \end{minted}
 
@@ -319,7 +336,9 @@ this problem. It turns out that lifetimes in conjunction with some other feature
 are sufficient to introduce \emph{generativity} into the type system. Generativity is
 a limited system that can solve some of the problems usually reserved for
 dependent typing. We won't lie: this is an ugly hack, and we don't expect it
-to see much use. Still, it demonstrates the power of the ownership system.
+to see much use, although early drafts of our work here have inspired the creation
+of at least one library \cite{bluss-indexing}. Regardless, it demonstrates the power of
+the ownership system.
 
 In order to encode sound unchecked indexing, we need a way for types to talk about
 particular instances of other types. In this case, we specifically need a way
@@ -327,7 +346,8 @@ to talk about the relationship between a particular array, and the indices it ha
 produced. Rust's lifetime system, it turns out, gives us exactly that. Every
 instance of a value that contains a lifetime (e.g. a pointer) is referring to
 some particular region of code. Further, code can require that two lifetimes
-satisfy a particular relationship (typically, that one outlives the other).
+satisfy a particular relationship. Typically all that is required is that
+one outlives the other, but it is possible to require strict equality.
 
 The basic idea is then as follows: associate an array and its indices with
 a particular region of code. Unchecked indexing then simply requires that the
@@ -354,6 +374,12 @@ struct Index<'id> {
 }
 \end{minted}
 
+The $'id$ syntax is new here. Although most Rust programs can avoid declaring
+lifetimes, more advanced usage necessitates declaring them as generic arguments.
+In this case, we're externally declaring that the Index type contains something with
+a lifetime called $id$. Internally we're declaring this to be the lifetime of some
+pointer to a byte.
+
 Of course we don't \emph{actually} want to store a pointer at runtime, because we're
 only interested in creating a lifetime for the compiler to work with. Needing to
 signal that we contain a lifetime or type that we don't directly store is a
@@ -371,9 +397,9 @@ struct Index<'id> {
 }
 \end{minted}
 
-Now Rust believes it's unsound to freely resize the `'id` lifetime. However, as
-written, there's nothing that specifies where this `'id` should come from. If
-we're not careful, Rust could \emph{still} unify these lifetimes if it notices
+Now Rust believes it's unsound to freely resize the $id$ lifetime. However, as
+written, there's nothing that specifies where this $id$ should come from. If
+we're not careful, Rust could \emph{still} unify lifetimes incorrectly if it notices
 there's no actual constraints on them. Consider the following kind of program
 we're trying to prevent:
 
@@ -386,14 +412,14 @@ let index: Index<'a> = arr1.get_index();
 let x = arr2[index];
 \end{minted}
 
-If we don't constrain the lifetimes `'a` and `'b`, then the constraint solver
+If we don't constrain the lifetimes $a$ and $b$, then the constraint solver
 will see only the following system:
 
-* `'a` and `'b` are invariant lifetimes
-* indexing requires `'a = 'b`
+* $a$ and $b$ are invariant lifetimes
+* indexing requires $a = b$
 
-Which has the obvious solution of `'a = 'b = anything`. We need to apply some
-constraint to `'a` and `'b` to prevent Rust from unifying them. Within a single
+Which has the obvious solution of $a = b = anything$. We need to apply some
+constraint to $a$ and $b$ to prevent Rust from unifying them. Within a single
 function the compiler has perfect information and can't be tricked. However
 Rust explicitly does not perform inter-procedural analysis, so we can apply
 constraints with functions. In particular, Rust has to assume that the \emph{input}
@@ -412,7 +438,7 @@ fn bar<'a>(x: &'a u8, y: &'a u8) {
 \end{minted}
 
 Therefore, for every fresh lifetime we wish to construct, we require a new
-function call. We can do this in as ergonomically as possible (considering this
+function call. We can do this as ergonomically as possible (considering this
 is a hack) by using closures:
 
 \begin{minted}{rust}
@@ -439,31 +465,31 @@ fn main() {
     });
 }
 
-/// An Invariant Lifetime
+// An Invariant Lifetime
 type Id<'id> = PhantomData<Cell<&'id u8>>;
 
-/// A wrapper around an array that has a unique lifetime
+// A wrapper around an array that has a unique lifetime
 struct Array<'arr, 'id> {
     array: &'arr [i32],
     _id: Id<'id>,
 }
 
-/// A trusted in-bounds index to an Array with the same lifetime
+// A trusted in-bounds index to an Array with the same lifetime
 struct Index<'id> {
     idx: usize,
     _id: Id<'id>,
 }
 
-/// A trusted iterator of in-bounds indices into an Array
-/// with the same lifetime
+// A trusted iterator of in-bounds indices into an Array
+// with the same lifetime
 struct Indices<'id> {
     min: usize,
     max: usize,
     _id: Id<'id>,
 }
 
-/// Given a normal array, wrap it to have a unique lifetime
-/// and pass it to the given function
+// Given a normal array, wrap it to have a unique lifetime
+// and pass it to the given function
 pub fn make_id<'arr, F>(array: &'arr [i32], func: F)
     where F: for<'id> FnOnce(Array<'arr, 'id>),
 {
@@ -472,14 +498,14 @@ pub fn make_id<'arr, F>(array: &'arr [i32], func: F)
 }
 
 impl<'arr, 'id> Array<'arr, 'id> {
-    /// Access the following index without bounds checking
+    // Access the following index without bounds checking
     pub fn get(&self, idx: Index<'id>) -> &'arr i32 {
-        unsafe { self.get_unchecked(idx.idx) }
+        unsafe { return self.array.get_unchecked(idx.idx); }
     }
 
-    /// Get an iterator over the indices of the array
+    // Get an iterator over the indices of the array
     pub fn indices(&self) -> Indices<'id> {
-        Indices { min: 0, max: self.array.len(), _id: PhantomData }
+        return Indices { min: 0, max: self.array.len(), _id: PhantomData };
     }
 }
 
@@ -487,10 +513,10 @@ impl<'id> Iterator for Indices<'id> {
     type Item = Index<'id>;
     pub fn next(&mut self) -> Option<Self::Item> {
         if self.min == self.max {
-            None
+            return None;
         } else {
             self.min += 1;
-            Some(Index { idx: self.min - 1, _id: PhantomData })
+            return Some(Index { idx: self.min - 1, _id: PhantomData });
         }
     }
 }
@@ -503,3 +529,14 @@ the whole thing unsound. So we \emph{really} don't recommend doing this. Also, w
 this interface catches an error, it produces nonsensical lifetime errors because
 Rust has no idea what we're doing. That said, it does demonstrate our ability to
 model particularly complex constraints.
+
+Those familiar with generativity and type systems may see that we are ultimately
+just applying an age-old trick: \emph{universal} types and functions can be combined to
+construct \emph{existential} types. In this case
+\mintinline{rust}{where F: for<'id> FnOnce(Array<'arr, 'id>)}
+is declaring that the function F is universal over all lifetimes that can be chosen
+for $id$. The body of any function that satisfies this signature must work with any
+$id$ it receives opaquely. In effect, it knows that there \emph{exists} a lifetime,
+and nothing else.
+
+

@@ -27,15 +27,15 @@ We observe that many classical memory safety errors are the result of some
 code trusting data to be in a particular state that doesn't necessarily hold.
 For instance, indexing out of bounds occurs when one incorrectly trusts an
 index to agree with an array's length. The problem of trust is largely addressed using three
-different strategies: naivety, paranoia, and suspicion. Each of these strategies
-represents a compromise among the competing concerns of control, safety, and
+different strategies: \emph{naivety}, \emph{paranoia}, and \emph{suspicion}. Each
+of these strategies represents a compromise among the competing concerns of control, safety, and
 ergonomics. Briefly, naive interfaces optimize for control by assuming that
 state is correct; paranoid interfaces optimize for safety by statically preventing
 invalid states; and suspicious interfaces optimize for ergonomics by validating
 states at runtime.
 
 We demonstrate how ownership can be used to build efficient and ergonomic
-paranoid interfaces on top of unsafe naive interfaces. For example,
+paranoid interfaces, even when building on top of unsafe naive interfaces. For example,
 iterators in Rust provide an interface for indexing into an array
 without bounds checks while being statically immune to invalidation.
 Two of these interfaces, \emph{drain} and \emph{entry}, were developed by us for Rust's

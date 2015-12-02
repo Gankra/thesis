@@ -8,14 +8,14 @@ their users the control necessary to satisfy their correctness and performance
 requirements, this control comes at the cost of an overwhelming burden for the
 user: \emph{Undefined Behaviour}. Users of these languages must be ever-vigilant
 of Undefined Behaviour, and even well-maintained projects fail to do so
-\cite{wang2012undefined}. The price for invoking Undefined Behaviour is dire:
+\cite{wang2012undefined}. The price of invoking Undefined Behaviour is dire:
 compilers are allowed to do \emph{absolutely anything at all}.
 
 Modern compilers can and will analyze programs on the assumption that Undefined
 Behaviour is impossible, leading to counter-intuitive results like time travel,
 wherein correct code is removed because subsequent code is Undefined. This
 aggressive misoptimization can turn relatively innocuous bugs like integer
-overflow in a print statement into a wildly incorrect behaviour. Severe
+overflow in a print statement into wildly incorrect behaviour. Severe
 vulnerabilities subsequently occur because Undefined Behaviour often leads to
 the program blindly stomping through memory and bypassing checks, providing attackers
 great flexibility.
@@ -46,19 +46,23 @@ stabilized, demonstrating the maintainability of Rust applications. There's
 little data on safety and correctness in Servo, but we will see throughout this
 thesis that Rust provides powerful tools for ensuring safety and correctness.
 
-It should be noted that Rust doesn't desire to invent novel systems or analyses,
-because research is hard, slow, and risky. Indeed, to a well-versed programming
-language theorist Rust can be easily summarized as a list of well-studied
-ideas. However, Rust's type system as a whole is greater than the sum
-of the parts. As such, we believe it merits research.
+It should be noted that Rust doesn't desire to invent novel systems or analyses.
+Research is hard, slow, and risky, and the academic community has already produced
+a wealth of rigorously tested ideas that have little main-stream exposure. As a
+result, to a well-versed programming language theorist Rust can be easily
+summarized as a list of throughly studied ideas. However, Rust's type system
+as a whole is greater than the sum of the parts. As such, we believe it merits
+research of its own.
 
 Truly understanding Rust's type system in a rigorous way is a massive
-under-taking that will fill several PhD theses \cite{rustbelt}. As such, we will make no effort
+undertaking that will fill several PhD theses, and Derek Dreyer's lab is already
+working hard on that problem \cite{rustbelt}. As such, we will make no effort
 to do this. Instead, we will focus in on what we consider the most interesting
 aspect of Rust: \emph{ownership}. Ownership is an emergent system built on three
 major pieces: \emph{affine types}, \emph{region analysis}, and \emph{privacy}. Together we get
 a system for programmers to manage where and when data lives, and where
-and when it can be mutated in a reasonably ergonomic and intuitive manner.
+and when it can be mutated, while still being reasonably ergonomic and intuitive
+(although with an initially steep learning curve).
 
 In particular,
 we observe that many of the kinds of problems Rust seeks to solve boil down
@@ -71,10 +75,10 @@ Ownership particularly shines when one wants to develop concurrent programs,
 an infamously difficult problem. Using Rust's tools for generic programming,
 it's possible to build totally safe concurrent algorithms and data structures
 which work with arbitrary data without relying on any particular paradigm like
-message-passing or persistence. Rust's crowning jewel in this regard is the
-ability to safely have child threads mutate data on a parent thread's stack
-without any unnecessary synchronization, as the following program demonstrates. (If you
-don't understand Rust syntax, a brief introduction is provided in the Appendix)
+message-passing or persistence. Rust's crowning jewel in this area is the
+ability to have child threads safely mutate data on a parent thread's stack
+without any unnecessary synchronization, as the following program demonstrates.
+(If you aren't familiar with Rust, a brief introduction is provided in the Appendix)
 
 \begin{minted}{rust}
 [dependencies]
@@ -85,6 +89,7 @@ crossbeam = 0.1.6
 extern crate crossbeam;
 
 fn main() {
+    // An array of integers, stored on the stack
     let mut array = [1, 2, 3];
 
     // Create a scope to know when to join all threads
@@ -108,22 +113,22 @@ fn main() {
 The most amazing part of this program is that it's based entirely on a third-
 party library (crossbeam \cite{crossbeam}). Rust does not require threads to be modeled as part
 of the language or standard library in order for these powerful safe
-abstractions to be constructed. Any attempt to share non-threadsafe data with
-the scoped threads, give the same pointer to two threads, keep a pointer for too
-long, or access the array while the threads are running won't just fail to work,
-it will \emph{fail to compile}. The fact that misuse is a static error is incredibly
-important for concurrent programs, because runtime errors can be incredibly
-difficult to reproduce or debug.
+abstractions to be constructed. All of the following operations won't just fail
+to work, but will \emph{fail to compile}: sharing non-threadsafe data with
+the scoped threads, giving the same pointer to two threads, keeping a pointer for too
+long, or accessing the array while the threads are still running. The fact that
+misuse is a static error is incredibly important for concurrent programs, because
+runtime errors can be incredibly difficult to reproduce or debug.
 
 Before we get into all the finer details of how this example works, we'll need
 to build up some foundations. In chapter 2, we establish
 the basic principles of safety and correctness that we're interested in. Since
 these are ultimately vague concepts in a practical setting, we do this by
-surveying several classic errors that all languages must deal with. In chapter 3
+surveying several classic errors that all languages must deal with in one way or
+another. In chapter 3
 we identify how each kind of error can be understood in terms of
 \emph{trust} and the major strategies for handling trust issues. In chapter 4
-we give a brief introduction to Rust's syntax, semantics, and ownership. In
-chapter 5 we analyze several interfaces designed by ourselves and the greater
-Rust community in terms of trust. In chapter 6 we we examine the limitations of
-ownership. Finally, in chapter 7 we briefly survey how ownership in Rust compares
-to similar systems in other languages.
+we give a brief introduction to Rust's semantics and ownership. In
+chapter 5 we analyze several interfaces in terms of trust. In chapter 6 we we
+examine the limitations of ownership. Finally, in chapter 7 we briefly survey
+how ownership in Rust compares to similar systems in other languages.
