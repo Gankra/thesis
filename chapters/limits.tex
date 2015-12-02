@@ -19,7 +19,7 @@ is laid out in a tree-like manner, without any cycles. If one's problem can
 be modeled without referential cycles, then ownership is pleasant and easy to
 use. Otherwise, ownership becomes quite burdensome.
 
-Any naive attempt to create a graphs, tree with parent pointers, doubly-linked
+Any naive attempt to create a graph, a tree with parent pointers, a doubly-linked
 list, or a value that contains pointers to itself will quickly lead to the
 compiler shutting everything down. This is necessitated by the fact that Rust
 allows memory can be manually managed, but demands that pointers can never dangle.
