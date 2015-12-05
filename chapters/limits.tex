@@ -313,15 +313,15 @@ fn main() {
 
         // Get pointers to each element in the array
         for x in &mut array {
-            // Spawn a thread to increment this element of the array
+            // Spawn a thread to increment this element
             let guard = thread::scoped(move || {
                 *x += 1;
             });
             guards.push(guard);
         }
 
-        // guards go out of scope here, so we block on all the child
-        // threads joining.
+        // guards go out of scope here, so we block
+        // on all the child threads joining.
     }
 
     // Array is now done being modified, and safe to read

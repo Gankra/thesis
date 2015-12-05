@@ -93,7 +93,7 @@ fn main() {
 
         // Get pointers to each element in the array
         for x in &mut array {
-            // Spawn a thread to increment this element of the array
+            // Spawn a thread to increment this element
             scope.spawn(move || {
                 *x += 1;
             });

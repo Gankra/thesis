@@ -52,16 +52,18 @@ fn main() {
 
     // transfer ownership of `data` to `data2`
     let data2 = data;
-    // `data` is now statically inaccessible, and logically uninitialized
+    // `data` is now statically inaccessible,
+    // and logically uninitialized
 
     // transfer ownership of `data2` to `consume`
     consume(data2)
-    // `data2` is now statically inaccessible, and logically uninitialized
+    // `data2` is now statically inaccessible,
+    // and logically uninitialized
 }
 
 fn consume(mut data3: Vec<u32>) {
-    // Mutating the collection is known to be safe, because `data3` knows
-    // it's the only one who can access it.
+    // Mutating the collection is known to be safe, because
+    // `data3` knows it's the only one who can access it.
     data3.push(1);
 }
 \end{minted}
@@ -161,7 +163,9 @@ fn main() {
     }
 }
 
-fn matches(input: Data, pattern: Pattern) -> (bool, Data, Pattern) {
+fn matches(input: Data, pattern: Pattern)
+    -> (bool, Data, Pattern)
+{
     // ...
     return (found_match, input, pattern);
 }
@@ -232,8 +236,8 @@ fn compute_it(input: &u32) -> &u32 {
 <anon>:11:13: 11:17 error: `data` does not live long enough
 <anon>:11     return &data;
                       ^~~~
-<anon>:8:36: 12:2 note: reference must be valid for the anonymous
-    lifetime #1 defined on the block at 8:35...
+<anon>:8:36: 12:2 note: reference must be valid for the
+    anonymous lifetime #1 defined on the block at 8:35...
 <anon>: 8 fn compute_it(input: &u32) -> &u32 {
 <anon>: 9     let data = input + 1;
 <anon>:10     // Returning a pointer to a local variable

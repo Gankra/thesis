@@ -219,7 +219,8 @@ or take a pointer to the old value.
 In its most general form, usage looks as follows:
 
 \begin{minted}{rust}
-// Search for this key, and capture whether it's in the map or not
+// Search for this key, and capture whether it's in
+// the map or not
 match map.entry(key) {
     Vacant(e) => {
         // The key is not in the map, compute the new value
@@ -230,7 +231,7 @@ match map.entry(key) {
         // The key is in the map, update the value
         expensive_update(e.get_mut(), capture);
 
-        // Conditionally remove the key from the map altogether
+        // Conditionally remove the key from the map
         if *e.get() == 0 {
             e.remove();
         }
@@ -480,7 +481,8 @@ struct Array<'arr, 'id> {
     _id: Id<'id>,
 }
 
-// A trusted in-bounds index to an Array with the same lifetime
+// A trusted in-bounds index to an Array
+// with the same lifetime
 struct Index<'id> {
     idx: usize,
     _id: Id<'id>,
