@@ -122,24 +122,48 @@ is likely, but not necessarily, a mistake.
 Affine types are all fine and good for some problems, but if that's all Rust had,
 it would be a huge pain in the neck. In particular, it's very common to want
 to \emph{borrow} a value. In the case of a unique borrow, affine types can encode
-this fine: you simply pass the borrowed value in, and then return it back.
+this fine: you simply pass the borrowed value in, and then return it back. This
+is \emph{borrow threading}.
 
-This is, at best, just annoying to do. Borrows must be ``threaded'' throughout
-such an API explicitly in both the types and code:
+Threading is, at its best, just annoying to do. In particular, in must be written
+out in the types, and performed explicitly in the code. With only affine types,
+any process that borrows some data and has an actual return value requires
+all of the data to be mixed in with the return value. Say we'd like to write
+something like:
 
 \begin{minted}{rust}
-struct Data { secret: u32 }
-
 fn main() {
-    let mut data = Data { secret: 0 }
-    data = mutate(data);
-    data = mutate(data);
-    data = mutate(data);
+    let input = get_input();
+    let pattern = get_pattern();
+    if matches(&input, &pattern) {
+        println!("input {} matches {}", input, pattern);
+    }
 }
 
-fn mutate(mut data: Data) -> Data {
-    data.secret += 1;
-    return data;
+fn matches(input: &Data, pattern: &Pattern) -> bool {
+    // ...
+    return found_match;
+}
+\end{minted}
+
+with only affine types we'd get something like:
+
+\begin{minted}{rust}
+fn main() {
+    let input = get_input();
+    let pattern = get_pattern();
+
+    // Need to recapture all the data we loaned
+    let (matches, input, pattern) = matches(input, pattern);
+
+    if matches {
+        println!("input {} matches {}", input, pattern);
+    }
+}
+
+fn matches(input: Data, pattern: Pattern) -> (bool, Data, Pattern) {
+    // ...
+    return (found_match, input, pattern);
 }
 \end{minted}
 
@@ -208,13 +232,15 @@ fn compute_it(input: &u32) -> &u32 {
 <anon>:11:13: 11:17 error: `data` does not live long enough
 <anon>:11     return &data;
                       ^~~~
-<anon>:8:36: 12:2 note: reference must be valid for the anonymous lifetime #1 defined on the block at 8:35...
+<anon>:8:36: 12:2 note: reference must be valid for the anonymous
+    lifetime #1 defined on the block at 8:35...
 <anon>: 8 fn compute_it(input: &u32) -> &u32 {
 <anon>: 9     let data = input + 1;
 <anon>:10     // Returning a pointer to a local variable
 <anon>:11     return &data;
 <anon>:12 }
-<anon>:9:26: 12:2 note: ...but borrowed value is only valid for the block suffix following statement 0 at 9:25
+<anon>:9:26: 12:2 note: ...but borrowed value is only valid
+    for the block suffix following statement 0 at 9:25
 <anon>: 9     let data = input + 1;
 <anon>:10     // Returning a pointer to a local variable
 <anon>:11     return &data;
@@ -281,7 +307,8 @@ let mut data = 0;
     let data_ref1 = &data;
     let data_ref2 = &data;
 
-    // Allowed to read through them, and still read the value directly
+    // Allowed to read through them,
+    // and still read the value directly
     println!("{} {} {}", data_ref1, data_ref2, data);
 
     // Not allowed to mutate through them (compiler error)
@@ -299,14 +326,20 @@ let mut data = 0;
     // Allowed to move the mutable reference to someone else
     data_the_second = data_mut;
 
-    // Not allowed to get an aliasing shared reference (compiler error)
+    // Not allowed to get an aliasing shared reference
+    // (compiler error)
     // let data_ref = &data;
 
-    // Not allowed to get an aliasing mutable reference (compiler error)
+    // Not allowed to get an aliasing mutable reference
+    // (compiler error)
     // let data_mut2 = &mut data;
 
-    // Not allowed to directly access data anymore (compiler error)
+    // Not allowed to directly access data anymore
+    // (compiler error)
     // println!("{}", data);
+
+    // But can get use the new location fine
+    println!("{}", data_the_second);
 }
 
 // All borrows out of scope, allowed to access data again
@@ -331,8 +364,8 @@ has lead some to conclude that mutation should be avoided as much
 as possible. Never mutating anything does indeed satisfy Rust's requirement
 that sharing and mutating be exclusive, but in a vacuous way (mutating never
 occurs). Rust takes a more permissive stance: mutate all you want as long
-as you're not sharing. It is our belief that this eliminates most of the
-problems that mutation causes in practice.
+as you're not sharing. The Rust developers believe that this eliminates
+most of the problems that mutation causes in practice.
 
 In particular, this statically eliminates iterator invalidation. For
 instance, consider the following program:
@@ -352,10 +385,13 @@ Thankfully, in Rust we don't \emph{need} to wonder what the programmer meant or
 what will happen when this is run, because it doesn't compile:
 
 \begin{minted}{text}
-<anon>:4:9: 4:13 error: cannot borrow `data` as mutable because it is also borrowed as immutable
+<anon>:4:9: 4:13 error: cannot borrow `data` as mutable
+    because it is also borrowed as immutable
 <anon>:4         data.push(2 * x);
                  ^~~~
-<anon>:3:15: 3:19 note: previous borrow of `data` occurs here; the immutable borrow prevents subsequent moves or mutable borrows of `data` until the borrow ends
+<anon>:3:15: 3:19 note: previous borrow of `data` occurs
+    here; the immutable borrow prevents subsequent moves
+    or mutable borrows of `data` until the borrow ends
 <anon>:3     for x in &data {
                        ^~~~
 <anon>:5:6: 5:6 note: previous borrow ends here
@@ -384,9 +420,10 @@ acquiring its lock:
 use std::sync::Mutex;
 
 fn main() {
-    // A Mutex owns the data it guards. In this case, an integer.
-    // Note that `data` is not declared to be mutable, which normally
-    // would make it impossible to update the value of the integer.
+    // A Mutex owns the data it guards. In this case,
+    // an integer. Note that `data` is not declared
+    // to be mutable, which normally would make it
+    // impossible to update the value of the integer.
     let data = Mutex::new(0);
 
     {
@@ -394,7 +431,8 @@ fn main() {
         let mut handle = data.lock().unwrap();
         // A handle behaves like an `&mut` to the data
         *handle += 1;
-        // But when it goes out of scope here, it releases the lock
+        // But when it goes out of scope here,
+        // it releases the lock.
     }
 }
 \end{minted}
@@ -438,7 +476,7 @@ some types are specifically thread-safe even though they're based on parts that
 aren't. For instance, Mutex itself is based on parts that aren't thread-safe, but
 it is of course thread-safe as long as it contains thread-safe data. As such,
 types can manually claim to be Send or Sync. Of course, it's possible to
-make this claim incorrectly, so how does is this safe to expose?
+make this claim incorrectly, so how is this safe to expose?
 
 It's not safe. In fact, it's explicitly unsafe to implement these interfaces.
 
@@ -527,7 +565,7 @@ Privacy in Rust is much the same as in most other languages. Fields and function
 as public or private, and only code that is within some boundary may access anything that is
 marked private.
 
-Returning to our example, the capacity of an growable array is marked as private.
+Returning to our example, the capacity of a growable array is marked as private.
 Since the abstraction boundary is often exactly the privacy boundary in Rust,
 end users of a growable array are therefore prevented from directly manipulating
 the capacity. Within the array's privacy boundary, this state can be arbitrarily
@@ -538,12 +576,14 @@ by a small set of trusted code.
 This rest of this thesis focuses primarily on these safe abstractions. A good safe abstraction
 must have many properties:
 
-* Safety: Using the abstraction inappropriately cannot violate Rust's safety guarantees.
-* Efficiency: Ideally, an abstraction is \emph{zero cost}, meaning it is as efficient
+\begin{enumerate}
+ \item Safety: Using the abstraction inappropriately cannot violate Rust's safety guarantees.
+ \item Efficiency: Ideally, an abstraction is \emph{zero cost}, meaning it is as efficient
   at the task it is designed to solve as an unabstracted solution (with a decent
   optimizing compiler).
-* Usability: A good abstraction should be more convenient and easy to understand than
+ \item Usability: A good abstraction should be more convenient and easy to understand than
   the code it's wrapping.
+\end{enumerate}
 
 It would be \emph{excellent} if the implementation was also completely safe, but we
 do not consider this a critical requirement, as Rust's standard library demonstrates.
@@ -552,10 +592,11 @@ It should be noted that Rust's reliance on safe abstractions is, in some sense,
 unfortunate. For one, it makes reasoning about the performance characteristics
 of a program much more difficult, as it relies on a sufficiently
 smart compiler to tear away these abstractions. This in turn means Rust's unoptimized
-performance in a rather atrocious state. It's not uncommon for a newcomer to
+performance is in a rather atrocious state. It's not uncommon for a newcomer to
 the language to express shock that a Rust program is several times slower than
 an equivalent Python program, only to learn that enabling optimizations makes
-the Rust program several times \emph{faster} than the Python program.
+the Rust program several times \emph{faster} than the Python program (and indeed,
+as fast as one would expect from the equivalent C++).
 However it is our opinion that this is simply fundamental to providing a
 programming environment that is safe, efficient, and usable.
 

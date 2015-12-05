@@ -4,9 +4,9 @@
 It has been our experience that almost everything you want to express at a high level
 can be safely, efficiently, and usably expressed in an ownership-oriented system.
 However this does \emph{not} mean that you can express it however you please!
-In order to achieve all of these goals, the API itself must be designed in
+In order to be safe, efficient, and usable the API itself must be designed in
 terms of data trust. If the API isn't designed with trust and ownership in mind,
-safety, efficiency, or usability will likely be compromised.
+these goals will likely be compromised.
 
 We have already seen how ownership eliminates use-afters, view invalidation,
 and data races. However we have not yet seen how indexing is addressed.
@@ -19,7 +19,7 @@ and data races. However we have not yet seen how indexing is addressed.
 Arrays are overwhelmingly
 the most common and important data structure in all of programming. Basically every
 program will do some array processing -- even \emph{hello world} is just copying an
-array of bytes to stdio. Array processing is so pervasive that Rust provides no
+array of bytes to stdout. Array processing is so pervasive that Rust provides no
 less than \emph{four} different ways to index into an array, each corresponding to
 one of the trust strategies: naive, paranoid, implicitly suspicious, and
 explicitly suspicious.
@@ -185,7 +185,9 @@ So an extra argument was added which would be passed to the function that \emph{
 called.
 
 \begin{minted}{rust}
-map.update_with_or_insert_with(key, capture, compute_default_func, update_existing_func);
+map.update_with_or_insert_with(key, capture,
+                               compute_default_func,
+                               update_existing_func);
 \end{minted}
 
 While the first APIs seemed quite reasonable, this final API was nightmarish. Worse,
@@ -335,8 +337,8 @@ By pure accident, Rust provides enough tools to solve
 this problem. It turns out that lifetimes in conjunction with some other features
 are sufficient to introduce \emph{generativity} into the type system. Generativity is
 a limited system that can solve some of the problems usually reserved for
-dependent typing. We won't lie: this is an ugly hack, and we don't expect it
-to see much use, although early drafts of our work here have inspired the creation
+dependent typing. I won't lie: this is an ugly hack, and I don't expect it
+to see much use, although early drafts of this work have inspired the creation
 of at least one library \cite{bluss-indexing}. Regardless, it demonstrates the power of
 the ownership system.
 
@@ -408,15 +410,18 @@ let arr1: Array<'a> = ...;
 let arr2: Array<'b> = ...;
 let index: Index<'a> = arr1.get_index();
 
-// This should fail to compile; trying to index Array<'b> with Index<'a>
+// This should fail to compile;
+// trying to index Array<'b> with Index<'a>
 let x = arr2[index];
 \end{minted}
 
 If we don't constrain the lifetimes $a$ and $b$, then the constraint solver
 will see only the following system:
 
-* $a$ and $b$ are invariant lifetimes
-* indexing requires $a = b$
+\begin{itemize}
+ \item $a$ and $b$ are invariant lifetimes
+ \item indexing requires $a = b$
+\end{itemize}
 
 Which has the obvious solution of $a = b = anything$. We need to apply some
 constraint to $a$ and $b$ to prevent Rust from unifying them. Within a single
@@ -449,8 +454,9 @@ fn main() {
     // Yuck! So much nesting!
     make_id(arr1, move |arr1| {
     make_id(arr2, move |arr2| {
-        // Within this closure, Rust is forced to assume that the lifetimes
-        // associated with arr1 and arr2 originate in their respective make_id
+        // Within this closure, Rust is forced to assume
+        // that the lifetimes associated with arr1 and
+        // arr2 originate in their respective make_id
         // calls. As such, it is unable to unify them.
 
         // Iterate over arr1
@@ -505,7 +511,11 @@ impl<'arr, 'id> Array<'arr, 'id> {
 
     // Get an iterator over the indices of the array
     pub fn indices(&self) -> Indices<'id> {
-        return Indices { min: 0, max: self.array.len(), _id: PhantomData };
+        return Indices {
+            min: 0,
+            max: self.array.len(),
+            _id: PhantomData
+        };
     }
 }
 
@@ -516,7 +526,10 @@ impl<'id> Iterator for Indices<'id> {
             return None;
         } else {
             self.min += 1;
-            return Some(Index { idx: self.min - 1, _id: PhantomData });
+            return Some(Index {
+                idx: self.min - 1,
+                _id: PhantomData
+            });
         }
     }
 }

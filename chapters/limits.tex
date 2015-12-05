@@ -19,10 +19,10 @@ is laid out in a tree-like manner, without any cycles. If one's problem can
 be modeled without referential cycles, then ownership is pleasant and easy to
 use. Otherwise, ownership becomes quite burdensome.
 
-Any naive attempt to create a graph, a tree with parent pointers, a doubly-linked
+Any naive attempt to create a graph, tree with parent pointers, doubly-linked
 list, or a value that contains pointers to itself will quickly lead to the
 compiler shutting everything down. This is necessitated by the fact that Rust
-allows memory can be manually managed, but demands that pointers can never dangle.
+allows memory to be manually managed, but demands that pointers can never dangle.
 Anyone who has tried to build a pointer-based data structure knows all too well
 how easy it is to forget to update some of the pointers after a node is removed.
 
@@ -329,7 +329,7 @@ fn main() {
 }
 \end{minted}
 
-The interesting piece of this API was the guards that were returned by
+The interesting piece of this API was the guards that were returned
 by the scoped function. Each guard claimed to store the closure the
 scoped function was passed. This in effect made them borrow all of the
 data that the closure could access. So as long as the guard existed, nothing
@@ -363,7 +363,7 @@ fn main() {
     // scope is essentially an `&mut Vec<Guard>`
     crossbeam::scope(|scope| {
         for x in &mut array {
-            // scope.spawn is essentially `guards.push(guard)`
+            // scope.spawn is essentially guards.push(guard)
             scope.spawn(move || {
                 *x += 1;
             });
@@ -375,7 +375,7 @@ fn main() {
 \end{minted}
 
 This design is a bit less flexible. In particular, one loses control of how
-the guards and stored and when they are destroyed. A more complicated design
+the guards are stored and when they are destroyed. A more complicated design
 could in principle expose that functionality, but we haven't yet found the need
 to do so.
 

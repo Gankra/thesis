@@ -60,7 +60,7 @@ prevent misuse, it should. The question is if all else is
 performance costs.
 
 While the techniques demonstrated in this thesis are can be applied generally,
-we will be focusing on few particular common problems that can lead to
+we will be focusing on a few particular common problems that can lead to
 memory safety violations: use-after-free, indexing out of bounds,
 iterator invalidation, and data races. In addition, we will consider the problem of
 memory leaks, which aren't a memory-safety problem, but still problematic.
@@ -159,11 +159,14 @@ scenario as a use-after-free, where two distinct handles are independently
 trying to use the same file.
 
 The more general category reveals a fundamental weakness of garbage collection:
-it only solves a use-after-free, and no other kind of use-after. Most languages
-therefore require runtime checks to guard against this problem in the general
-case. Regardless of if one gets particularly lucky or guards against this error
-at runtime, any program that tries to use-after is certainly \emph{wrong}. As
-such, preventing these programs from compiling at all is desirable.
+it only solves a use-after-free, and no other kind of use-after. Although all
+resources could be garbage collected, it's common to manually manage many other
+resources because they're much more limited, and have externally observable
+effects. For instance, file writes may not be committed to disk until the file
+is properly closed. Unfortunately, allowing manual management necessitates
+misuse to be guarded against at runtime. Since any program that tries to use-after
+is certainly \emph{wrong}, it's desirable to prevent programs that do this from
+compiling at all.
 
 
 
@@ -201,7 +204,7 @@ length isn't even known, making it \emph{impossible} to check.
 
 \section{Iterator Invalidation}
 
-Iterator invalidation occurs when collection is mutated while it's being iterated
+Iterator invalidation occurs when a collection is mutated while it's being iterated
 over. It's a particularly interesting problem because it's similar to a
 use-after-free or indexing out of bounds, but can require more pervasive checking
 to guard against. A simple example in C++:

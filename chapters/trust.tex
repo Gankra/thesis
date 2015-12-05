@@ -25,12 +25,12 @@ trust we will be focusing on for the bulk of this work.
 
 
 
-Second, there is the \emph{who} to trust with data. For most applications, it's pretty
+Second, there is the \emph{who} to trust with data. For most applications, it's
 reasonable to design an interface that assumes that the language, hardware, and
 operating system are well-behaved. Of course, bugs in any of these systems
 may necessitate workarounds, but we don't consider this aspect to be particularly
 interesting. At some limit, these systems just work the way they work, and any
-oddities can be regarded as a nasty corner-case to be documented.
+oddities can be regarded as a nasty corner case to be documented.
 
 The aspect of who to trust that we consider really interesting is within the
 boundary of a process. Within a single program, functions need to decide whether
@@ -96,14 +96,14 @@ someone might lose a leg.
 
 First and foremost, a naive interface
 is simply the easiest to \emph{implement}. The implementor doesn't need to concern
-themselves with corner cases because they are simply assumed to not occur. This
+themselves with corner cases or invalid input, because they are simply assumed to not occur. This
 in turn gives significant control to the user of the interface because they don't
 need to worry about the interface checking or mangling inputs. It's up to the user
 to figure out how correct usage is ensured. Since the user has the most context,
 they're the best poised to identify when assumptions can or can't be made.
 
 Naive interfaces may also expose lower-level details more freely, on the
-assumption that they will be used correctly. This empowers users to effeciently
+assumption that they will be used correctly. This empowers users to efficiently
 and reliably perform operations that may never have been envisioned by the
 original implementor, or were simply deemed too much work to develop and maintain.
 Control is absolutely the greatest strength of naive interfaces. They empower

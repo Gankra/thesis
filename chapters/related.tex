@@ -90,9 +90,12 @@ Dereferencing such a pointer is Undefined Behaviour, but because the value is
 #include <memory>
 
 int main() {
-    auto x = std::make_unique<int>(0);  // x owns the allocation
-    auto y = std::move(x);              // now y owns the allocation
-    std::cout << *x;                    // dereference null x; oops!
+    // x owns the allocation
+    auto x = std::make_unique<int>(0);
+    // now y owns the allocation
+    auto y = std::move(x);
+    // dereference null x; oops!
+    std::cout << *x;
     std::cout << *y;
 }
 \end{minted}
@@ -125,8 +128,8 @@ can encode types which have significant locations. For instance, one could
 construct a linked list with nodes stored on the stack in C++, and have the
 move constructor for a node update the pointers of its neighbors. In Rust
 this design would never be sound, because a value isn't ever informed when it's
-moved. However it is our opinion that this is a relatively minor loss compared
-to the other benefits of Rust's solution.
+moved. However it's the Rust developer's opinion that this is a relatively
+minor loss compared to the other benefits of Rust's solution.
 
 C++ has no solution to the problem of borrowed pointers. Any interface that
 exposes an untracked pointer or reference is fundamentally unsafe, because they

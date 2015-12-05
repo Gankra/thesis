@@ -40,17 +40,20 @@ look no further than the Servo project, a rewrite of Firefox's core engine in Ru
 
 Preliminary results \cite{servo-exp} have found that Servo can
 perform layout two times faster than Firefox on a single thread, and four times
-faster with four threads. Servo has also attracted over 300 contributors \cite{servo-gh},
-in spite of the fact that it's written in a language that was barely just
-stabilized, demonstrating the maintainability of Rust applications. There's
-little data on safety and correctness in Servo, but we will see throughout this
-thesis that Rust provides powerful tools for ensuring safety and correctness.
+faster with four threads. Servo has also attracted over 300 contributors
+\cite{servo-gh}, in spite of the fact that it's not production ready and
+written in a language that was barely just stabilized. This demonstrates that
+Rust has \emph{some} amount of usability, and that applications written in it
+have can actually be maintained by novices (since almost everyone using Rust
+is new to it). There's little data on safety and correctness in Servo, but we'll
+see throughout this thesis that Rust provides powerful tools for ensuring
+safety and correctness.
 
 It should be noted that Rust doesn't desire to invent novel systems or analyses.
 Research is hard, slow, and risky, and the academic community has already produced
 a wealth of rigorously tested ideas that have little main-stream exposure. As a
 result, to a well-versed programming language theorist Rust can be easily
-summarized as a list of throughly studied ideas. However, Rust's type system
+summarized as a list of thoroughly studied ideas. However, Rust's type system
 as a whole is greater than the sum of the parts. As such, we believe it merits
 research of its own.
 
@@ -63,13 +66,6 @@ major pieces: \emph{affine types}, \emph{region analysis}, and \emph{privacy}. T
 a system for programmers to manage where and when data lives, and where
 and when it can be mutated, while still being reasonably ergonomic and intuitive
 (although with an initially steep learning curve).
-
-In particular,
-we observe that many of the kinds of problems Rust seeks to solve boil down
-to issues of \emph{trust} between different pieces of code and the data they share.
-Because Rust's ownership system allows developers to model access to data in
-novel ways, it's possible to cleanly model the trust these interfaces require to be
-safe and efficient.
 
 Ownership particularly shines when one wants to develop concurrent programs,
 an infamously difficult problem. Using Rust's tools for generic programming,
@@ -120,15 +116,43 @@ long, or accessing the array while the threads are still running. The fact that
 misuse is a static error is incredibly important for concurrent programs, because
 runtime errors can be incredibly difficult to reproduce or debug.
 
-Before we get into all the finer details of how this example works, we'll need
-to build up some foundations. In chapter 2, we establish
-the basic principles of safety and correctness that we're interested in. Since
-these are ultimately vague concepts in a practical setting, we do this by
-surveying several classic errors that all languages must deal with in one way or
-another. In chapter 3
-we identify how each kind of error can be understood in terms of
-\emph{trust} and the major strategies for handling trust issues. In chapter 4
-we give a brief introduction to Rust's semantics and ownership. In
-chapter 5 we analyze several interfaces in terms of trust. In chapter 6 we we
-examine the limitations of ownership. Finally, in chapter 7 we briefly survey
-how ownership in Rust compares to similar systems in other languages.
+In order to understand how this program works and why it's safe, we'll need to
+build up some foundations.
+
+In chapter 2, we establish the basic principles of
+safety and correctness that we're interested in. Since these are ultimately
+vague concepts in a practical setting, we do this by surveying several classic
+errors that all languages must deal with in one way or another.
+
+In chapter 3 we provide a novel analysis of these problems in terms of \emph{trust}.
+In particular, we observe that these problems can be reduced to how code trusts
+other code with data. We identify three major strategies for handling
+these trust issues, and briefly categorize some common solutions to these problems
+according to these strategies.
+
+In chapter 4 we introduce ownership. We show how affine types, region
+analysis, and privacy contribute to Rust's ability to model and enforce trust
+between different pieces of code. Although this is mostly describing concepts
+that are well-understood at an intuitive level in the Rust community, this
+work is the first to actually write them down completely, and in terms of
+trust.
+
+In chapter 5 we analyze several standard Rust interfaces use ownership for trust.
+We demonstrate how Rust's story surrounding indexing into arrays exactly aligns
+with our strategies for trust. Of interest is that tagged unions use ownership
+to provide values that must be checked for validity to be accessed, and iterators
+use ownership to provide safe unchecked indexing. We use the \emph{entry} API,
+which was developed as part of this work, to demonstrate how ownership can be
+used to externally expose the execution of an algorithm, producing more flexible
+designs that gives greater control to users.
+
+In chapter 6 we discuss some of the limitations of Rust's version of ownership.
+We show how ownership struggles with ad-hoc cyclic data structures, and some
+of the community's solutions to this problem. We use the \emph{drain} API,
+another interface developed as part of this work, to demonstrate how ownership
+is mostly only able to model things that \emph{must not} be done by an interfaces
+user, but struggles to model things that \emph{must} be done. Finally, we review
+how the scoped thread API works.
+
+In chapter 7 we briefly survey how ownership in Rust compares to similar systems
+in other languages. In particular, Cyclone and C++, Rust's two closest relatives.
