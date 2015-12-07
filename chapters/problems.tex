@@ -272,24 +272,45 @@ inconsistent by mutating what it intends to represent.
 \section{Data Races}
 
 A data race occurs when two separate threads attempt to access the same location
-in memory in an unsynchronized manner, and one of them is writing.
+in memory in an unsynchronized manner, and one of them is writing. Unlike the
+other problems discussed here, a data race is primarily an issue of correctly
+expressing intent to the compiler.
 
-The consequences of a data race are very dependent on details of the implementation
-and execution, but the values read and written will almost certainly be inconsistent.
-This can be because of the underlying hardware, or the compiler itself.
+Many of the optimizations we expect a good optimizing compiler to perform are
+completely broken in a concurrent context. Consider the following code:
 
-The hardware may produce incorrect results because it's trying its hardest to avoid
-synchronizing the caches and buffers of each individual core. It's quite easy to
-see this effect by trying to have multiple threads increment an integer repeatedly.
-One will likely find that several of the increments simply \emph{didn't happen},
-producing a smaller result than expected. To guarantee that the increments happen,
-they must be performed with special atomic instructions.
+\begin{minted}{C}
+step = 7;
+while (step != 0) {
+    if (step == 2) {
+        do_stuff();
+    }
+    do_other_stuff();
+    step -= 1;
+}
+\end{minted}
 
-The compiler may produce incorrect results because it's trying to reason about
-observable effects and optimize instruction dispatch. It may reason that re-ordering
-two instructions makes better use of the hardware, but if those two instructions
-correspond to ``lock the mutex'' (atomic) and ``access the locked data'' (non-atomic),
-the re-ordering will lead to a data race on the locked data.
+One reasonable rearrangement of this code is as follows:
+
+\begin{minted}{C}
+step = 7;
+while (step != 2) {
+    do_other_stuff();
+    step -= 1;
+}
+
+do_stuff();
+do_other_stuff();
+do_other_stuff();
+\end{minted}
+
+This eliminates the need to perform the extra check in the loop, a clearly
+desirable optimization. However this transformation is unsound if another
+thread can modify the value of the step variable, causing the branch to be
+taken multiple times. Worse, if the step variable is kept in a register
+(yet another desirable optimization), any writes another thread performs
+will be completely ignored. In order to deal with this, one needs to
+communicate to the compiler that data accesses need to be properly synchronized.
 
 Correctly preventing data races is an incredibly difficult problem. As always,
 C and C++ generally leave this up to the programmer. They expose intrinsics for
