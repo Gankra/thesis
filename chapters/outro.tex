@@ -2,6 +2,58 @@
 \label{ch:outro}
 
 We have demonstrated how several classic safety and correctness issues can
-be reduced to an issue of trust between code and the data it shares. In particular,
+be reduced to an issue of trust between code and the data it shares. Of particular
+interest are the strategies we have identified for managing this trust:
+naivety, paranoia, and suspicion. These strategies respectively correspond to the major
+competing concerns of control, safety, and ergonomics in interface design.
 
-TODO: still this.
+Rust's model of ownership enables each of these strategies to
+be used together. At the lowest level, Unsafe Rust provides naive unsafe interfaces
+as simple building blocks. Privacy enables developers to build on top of these
+unsafe interfaces, exposing paranoid or suspicious interfaces as needed. Affine
+typing enables developers to rely on the fact that data isn't shared to safely
+mutate or invalidate it. Region analysis enables developers to share data
+safely knowing that it won't be mutated or stored longer than its lifetime.
+Of particular note is the philosophy of mutability and sharing being exclusive,
+which trivially generalizes to data race freedom.
+
+We've seen how this comes together in several interface designs. Iterators
+provide an interface for safely indexing into an array without any
+bounds or consistency checks because ownership prevents their invalidation.
+The entry API demonstrate how algorithmic state can be captured and exposed externally
+to make more flexible interfaces. Ownership can be pushed to extreme limits to
+with generativity, enabling interfaces to statically require that individual
+values have the same origin.
+
+Other interfaces demonstrate the limits of ownership. Structures with cyclic
+references like graphs are hostile towards ownership, requiring region analysis
+to be bypassed in some way. The drain API demonstrates how ownership is poor
+at guaranteeing that good things \emph{are} done, rather than guaranteeing that
+bad things aren't.
+
+All of this comes together to produce an impressive feat: the ability to have
+threads safely access data stored on the stack of other threads without
+unnecessary synchronization.
+
+Due to the youth of Rust, there is much open exploration to be done. This
+thesis only observes ownership intuitively and informally.
+Rigorously demonstrating the soundness of Rust and ownership still needs to
+be done. Since Rust is under active development, this is a bit of a moving
+target.
+
+It's unclear what extensions to ownership can be soundly added in the future.
+Of particular interest is what extensions are unsound to \emph{ever} add given the
+interfaces that are implemented in Rust today. Proper linear types are a
+frequently requested extension whose interactions haven't been fully explored.
+It's also unclear what the consequences of more powerful region
+analysis would be. Since region analysis is actually expected to be revamped
+withing the year, this is an incredibly relevant question.
+
+Part of the issue is that much of Rust's semantics are actually emergent from
+library decisions. The entire notion of thread-safety in Rust is implemented as
+a library! As a result, deciding that some operation is safe can mandate that other
+operations are unsafe if the there are poor interactions. For instance, the
+ability to leak destructors forbids the original design for the scoped thread
+API, and requires a few interfaces to do additional work. Alternative
+standard libraries could provide completely different safety semantics to be
+explored!
