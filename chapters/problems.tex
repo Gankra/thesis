@@ -7,17 +7,24 @@ We would like our programs to be correct, but we seem to be very bad at doing
 this. In fact, any assertion that a non-trivial program is totally correct
 will be met with deep suspicion. This isn't unreasonable: any non-trivial property
 one might be interested in is usually \emph{undecidable}, even in trivial programming
-languages. Still, some bugs are more pervasive and pernicious than others.
-It's one thing to get a poorly rounded output, but another thing altogether
-to join a botnet because of a sloppy integer parser.
+languages. \cite{rice1953classes}
+It's possible to formally verify systems, but this is generally an
+incredibly difficult, constraining, and expensive process. In practical terms,
+this means most programs are essentially validated in a sloppy best-effort manner.
+\cite{andronick2012large}
+Still, some bugs are more pervasive and pernicious than others. It's one thing
+to get a poorly rounded output, but another thing altogether to join a botnet
+because of a sloppy integer parser.
 
 For this reason, it is common to distinguish one major category of bug from
 all others: \emph{memory safety}. A system is said to be memory-safe if access to memory is
-properly restricted. This is an unfortunately vague definition, but that's because
-it's a broad problem. At the heart of memory safety are two major concerns:
+properly restricted. More concretely, a memory-safe system should prevent accessing
+beyond the bounds of the object addressed by a pointer, accessing unallocated
+memory, and reading uninitialized memory. \cite{nagarakatte2014watchdoglite}
+At the heart of memory safety are two major concerns:
 preventing secrets from being stolen, and systems from being hijacked. It is
 of course possible to design a memory-safe system that liberally leaks secrets
-and happily takes arbitrary commands from the public internet, but an absence
+and blindly takes arbitrary commands from the public internet, but an absence
 of memory safety makes even innocuous systems trivial to exploit in this way.
 
 Most importantly, programs must have \emph{some} restriction on what can be read
@@ -32,7 +39,7 @@ Even ``only'' being able to read arbitrary memory can be an exploit, particularl
 as reading memory often implies writing the value somewhere else. This is the
 basis for the infamous Heartbleed attack, where clients could ask servers
 to send them random chunks of its memory, leaking the server's private key
-\cite{schneier2014heartbleed}.
+. \cite{schneier2014heartbleed}
 
 Upholding memory safety is a difficult task that must often be approached in
 a holistic manner, because two interfaces that are memory-safe on their own can easily
@@ -59,13 +66,13 @@ prevent misuse, it should. The question is if all else is
 \emph{really} equal, or if preventing an error comes at significant ergonomic or
 performance costs.
 
-While the techniques demonstrated in this thesis are can be applied generally,
-we will be focusing on a few particular common problems that can lead to
+While the techniques demonstrated in this thesis can be applied generally,
+we will be focusing on a few particularly common problems that can lead to
 memory safety violations: use-after-free, indexing out of bounds,
 iterator invalidation, and data races. In addition, we will consider the problem of
 memory leaks, which aren't a memory-safety problem, but still problematic.
 
-We will see how all of these problems occur in the two most prolific programming
+We will see how all of these problems occur in two of the most prolific programming
 languages of all: C and C++. It's worth noting that the practices encouraged
 by ``modern'' C++ can significantly mitigate or eliminate these errors, but
 unfortunately these are only conventions, and must be rigorously followed
@@ -139,7 +146,11 @@ violates memory safety, allowing code to read or write memory that it wasn't
 supposed to.
 
 Use-after-frees are solved by almost all languages by requiring
-pervasive garbage collection. C and C++ are the two major exceptions, which
+pervasive garbage collection. See for example: C\#, D, Dart, F\#, Go, Haskell, Java,
+JavaScript, Lisp, Lua, ML, OCaml, Perl, PHP, Python, Ruby, Scala, Scheme, Swift,
+Visual Basic and many, many, more.
+
+C and C++ are the two major exceptions, which
 by default don't use any garbage collection mechanisms. In these two languages
 use-after-free is a rich source of exploits to this day. As we will
 see, this is no coincidence; the solution taken by most languages is
@@ -222,8 +233,8 @@ int main() {
     for (auto it = data.begin(); it != data.end(); ++it) {
         printf("%u\n", *it);
 
-        // but push a single element onto
-        // the stack while doing it
+        // if this is the first step of the iteration
+        // push `0` onto the back of the array
         if (it == data.begin()) {
             data.push_back(0);
         }
@@ -312,7 +323,7 @@ taken multiple times. Worse, if the step variable is kept in a register
 will be completely ignored. In order to deal with this, one needs to
 communicate to the compiler that data accesses need to be properly synchronized.
 
-Correctly preventing data races is an incredibly difficult problem. As always,
+Correctly preventing data races is a difficult problem. As always,
 C and C++ generally leave this up to the programmer. They expose intrinsics for
 performing atomic operations that inhibit optimizations and emit atomic hardware
 instructions, but nothing prevents misusing these operations or simply ignoring

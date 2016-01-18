@@ -12,7 +12,7 @@ of Undefined Behaviour, and even well-maintained projects fail to do so
 compilers are allowed to do \emph{absolutely anything at all}.
 
 Modern compilers can and will analyze programs on the assumption that Undefined
-Behaviour is impossible, leading to counter-intuitive results like time travel,
+Behaviour is impossible, leading to counter-intuitive results like time travel, \cite{timetravel}
 wherein correct code is removed because subsequent code is Undefined. This
 aggressive misoptimization can turn relatively innocuous bugs like integer
 overflow in a print statement into wildly incorrect behaviour. Severe
@@ -33,9 +33,11 @@ because unmanaged pointers in C and C++ are wildly unsafe.
 
 In order to address these problems, Mozilla developed the Rust programming language.
 Rust has ambitious goals. It intends to be more efficient than C++ and safer
-than Java without sacrificing ergonomics. Although Rust 1.0 was released less
-than a year ago \cite{rust1}, early results are incredibly promising. To see this, we need
-look no further than the Servo project, a rewrite of Firefox's core engine in Rust
+than Java without sacrificing ergonomics. This is possible because, as we discussed,
+C++ code is often designed inefficiently in order to defend against unsafety.
+Although Rust 1.0 was released less than a year ago \cite{rust1}, early results
+are promising. To see this, we need look no further than the Servo project, a
+rewrite of Firefox's core engine in Rust
 \cite{servo}.
 
 Preliminary results \cite{servo-exp} have found that Servo can
@@ -44,7 +46,7 @@ faster with four threads. Servo has also attracted over 300 contributors
 \cite{servo-gh}, in spite of the fact that it's not production ready and
 written in a language that was barely just stabilized. This demonstrates that
 Rust has \emph{some} amount of usability, and that applications written in it
-have can actually be maintained by novices (since almost everyone using Rust
+have actually be maintained by novices (since almost everyone using Rust
 is new to it). There's little data on safety and correctness in Servo, but we'll
 see throughout this thesis that Rust provides powerful tools for ensuring
 safety and correctness.
@@ -114,7 +116,8 @@ to work, but will \emph{fail to compile}: sharing non-threadsafe data with
 the scoped threads, giving the same pointer to two threads, keeping a pointer for too
 long, or accessing the array while the threads are still running. The fact that
 misuse is a static error is incredibly important for concurrent programs, because
-runtime errors can be incredibly difficult to reproduce or debug.
+runtime errors are more difficult debug due to the need to isolate and reproduce
+the behaviour.
 
 In order to understand how this program works and why it's safe, we'll need to
 build up some foundations.
@@ -124,7 +127,7 @@ safety and correctness that we're interested in. Since these are ultimately
 vague concepts in a practical setting, we do this by surveying several classic
 errors that all languages must deal with in one way or another.
 
-In chapter 3 we provide a novel analysis of these problems in terms of \emph{trust}.
+In chapter 3 we provide an analysis of these problems in terms of \emph{trust}.
 In particular, we observe that these problems can be reduced to how code trusts
 other code with data. We identify three major strategies for handling
 these trust issues, and briefly categorize some common solutions to these problems
