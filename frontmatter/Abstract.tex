@@ -19,34 +19,38 @@ by default, faster than C++, easier to maintain, and excels at concurrency.
 
 Yet little analysis exists of the semantics and expressiveness of Rust's type
 system. This thesis focuses on one of the core aspects of Rust's type system:
-\emph{ownership}. Ownership is a system for expressing where and when data lives, and
-where and when data can be mutated. In order to understand ownership and the
-problems it solves, we provide a novel analysis of both in terms of \emph{trust}.
+\emph{ownership}, a system for expressing where and when data lives, and
+where and when data can be mutated.
 
-We observe that many classical memory safety errors are the result of some
-code trusting data to be in a particular state that doesn't necessarily hold.
-For instance, indexing out of bounds occurs when one incorrectly trusts an
-index to agree with an array's length. The problem of trust is largely addressed using three
-different strategies: \emph{naivety}, \emph{paranoia}, and \emph{suspicion}. Each
-of these strategies represents a compromise among the competing concerns of control, safety, and
-ergonomics. Briefly, naive interfaces optimize for control by assuming that
-state is correct; paranoid interfaces optimize for safety by statically preventing
-invalid states; and suspicious interfaces optimize for ergonomics by validating
-states at runtime.
+In order to understand ownership and the problems it solves, we survey
+several classical memory safety errors that ownership is effective at eliminating:
+use-after-free, indexing out of bounds, iterator invalidation, and data races.
+We also consider the problem of memory leaks, which ownership is useful for,
+but insufficient to solve.
 
-We demonstrate how ownership can be used to build efficient and ergonomic
-paranoid interfaces, even when building on top of unsafe naive interfaces. For example,
+We observe that these problems are all related by the problem of regions of
+code trusting data to uphold certain invariants. For instance, indexing out
+of bounds occurs when one incorrectly trusts an index to agree with an array's
+length. Since ownership is about controlling the mutation and lifetime of data,
+it is therefore well-aligned for solving this kind of problem.
+
+We demonstrate how ownership is useful for constructing safe and ergonomic
+low-overhead abstractions, even when built upon unsafe foundations. For example,
 iterators in Rust provide an interface for indexing into an array
 without bounds checks while being statically immune to invalidation.
 Two of these interfaces, \emph{drain} and \emph{entry}, were developed by us for Rust's
 standard library.
 
-Finally we demonstrate some of the limits of ownership. In particular, we
+We also survey some of the limits of ownership. In particular, we
 explore how the lack of proper linear typing makes it difficult to guarantee
 that desirable operations are performed, such as freeing unused memory or
 repairing invariants. However we provide some tricks for \emph{ensuring} that operations
 are performed (at the cost of ergonomics), or simply mitigating the impact of not
 performing them.
+
+Finally, we compare Rust's system of ownership to the similar systems found in
+Cyclone and C++. These are the two closest systems to ownership in Rust
+that we're aware of, and therefore merit some discussion.
 
 \endgroup
 

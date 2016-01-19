@@ -34,7 +34,7 @@ because unmanaged pointers in C and C++ are wildly unsafe.
 In order to address these problems, Mozilla developed the Rust programming language.
 Rust has ambitious goals. It intends to be more efficient than C++ and safer
 than Java without sacrificing ergonomics. This is possible because, as we discussed,
-C++ code is often designed inefficiently in order to defend against unsafety.
+C++ code is often designed inefficiently in order to defend against its own unsafety.
 Although Rust 1.0 was released less than a year ago \cite{rust1}, early results
 are promising. To see this, we need look no further than the Servo project, a
 rewrite of Firefox's core engine in Rust
@@ -97,6 +97,9 @@ fn main() {
         for x in &mut array {
             // Spawn a thread to increment this element
             scope.spawn(move || {
+                // Child thread mutates parent thread
+                // This is neither atomic, nor specifically
+                // synchronized.
                 *x += 1;
             });
         }
@@ -128,8 +131,8 @@ vague concepts in a practical setting, we do this by surveying several classic
 errors that all languages must deal with in one way or another.
 
 In chapter 3 we provide an analysis of these problems in terms of \emph{trust}.
-In particular, we observe that these problems can be reduced to how code trusts
-other code with data. We identify three major strategies for handling
+In particular, we observe that these problems can be reduced to how different
+regions of code trust each other with data. We identify three major strategies for handling
 these trust issues, and briefly categorize some common solutions to these problems
 according to these strategies.
 
