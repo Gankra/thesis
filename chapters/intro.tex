@@ -126,25 +126,27 @@ the behaviour.
 In order to understand how this program works and why it's safe, we'll need to
 build up some foundations.
 
-In chapter 2, we establish the basic principles of
+In chapter 2, we provide a brief introduction to some of Rust's syntax.
+
+In chapter 3, we establish the basic principles of
 safety and correctness that we're interested in. Since these are ultimately
 vague concepts in a practical setting, we do this by surveying several classic
 errors that all languages must deal with in one way or another.
 
-In chapter 3 we provide an analysis of these problems in terms of \emph{trust}.
+In chapter 4 we provide an analysis of these problems in terms of \emph{trust}.
 In particular, we observe that these problems can be reduced to how different
 regions of code trust each other with data. We identify three major strategies for handling
 these trust issues, and briefly categorize some common solutions to these problems
 according to these strategies.
 
-In chapter 4 we introduce ownership. We show how affine types, region
+In chapter 5 we introduce ownership. We show how affine types, region
 analysis, and privacy contribute to Rust's ability to model and enforce trust
 between different pieces of code. Although this is mostly describing concepts
 that are well-understood at an intuitive level in the Rust community, this
 work is the first to actually write them down completely, and in terms of
 trust.
 
-In chapter 5 we analyze several standard Rust interfaces use ownership for trust.
+In chapter 6 we analyze several standard Rust interfaces use ownership for trust.
 We demonstrate how Rust's story surrounding indexing into arrays exactly aligns
 with our strategies for trust. Of interest is that tagged unions use ownership
 to provide values that must be checked for validity to be accessed, and iterators
@@ -153,7 +155,7 @@ which was developed as part of this work, to demonstrate how ownership can be
 used to externally expose the execution of an algorithm, producing more flexible
 designs that gives greater control to users.
 
-In chapter 6 we discuss some of the limitations of Rust's version of ownership.
+In chapter 7 we discuss some of the limitations of Rust's version of ownership.
 We show how ownership struggles with ad-hoc cyclic data structures, and some
 of the community's solutions to this problem. We use the \emph{drain} API,
 another interface developed as part of this work, to demonstrate how ownership
@@ -161,5 +163,5 @@ is mostly only able to model things that \emph{must not} be done by an interface
 user, but struggles to model things that \emph{must} be done. Finally, we review
 how the scoped thread API works.
 
-In chapter 7 we briefly survey how ownership in Rust compares to similar systems
+In chapter 8 we briefly survey how ownership in Rust compares to similar systems
 in other languages. In particular, Cyclone and C++, Rust's two closest relatives.
