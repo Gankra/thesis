@@ -176,7 +176,8 @@ And so, \mintinline{rust}{find_or_insert_with} was provided, which took a
 \end{minted}
 
 However this interface had the problem that it could be difficult to tell which
-case was found. This is where things started to fall apart. In order to support
+case was found (a default value may be non-trivial to identify). This is where
+things started to fall apart. In order to support
 this, a function that took \emph{two} functions was created; one for each case. However this
 design was problematic because each function
 may want to capture the same affine data by-value. We know this is sound because only
@@ -190,7 +191,9 @@ map.update_with_or_insert_with(key, capture,
                                update_existing_func);
 \end{minted}
 
-While the first APIs seemed quite reasonable, this final API was nightmarish. Worse,
+While the first APIs seemed quite reasonable, this later APIs were becoming
+unwieldy to use \cite{entry1}. In particular, the need to manually produce
+a type and value for the closure of the two functions is unheard of. Worse,
 it didn't even accommodate all the use cases people came up with. Some wanted
 to \emph{remove} the key from the map under some conditions, which would necessitate
 a whole new family of update functions. The problem is that this design is what the
@@ -255,7 +258,8 @@ the old interfaces this design was intended to replace, but there is an importan
 difference. Before, we were required to add new interfaces to accommodate increasingly
 complex use cases. Now, we are adding new interfaces to accommodate increasingly
 \emph{common} use cases. We believe this to be the more correct way for an interface to
-grow; adding conveniences for idioms, rather than adding nightmares for special cases.
+grow; adding conveniences for idioms, rather than adding more complex interfaces
+for special cases.
 
 One important question about this interface is whether it's \emph{sound}. After all,
 we're taking a snapshot of the internal state of a collection, and then yielding
@@ -338,8 +342,8 @@ By pure accident, Rust provides enough tools to solve
 this problem. It turns out that lifetimes in conjunction with some other features
 are sufficient to introduce \emph{generativity} into the type system. Generativity is
 a limited system that can solve some of the problems usually reserved for
-dependent typing. I won't lie: this is an ugly hack, and I don't expect it
-to see much use, although early drafts of this work have inspired the creation
+dependent typing. It should be noted that this trick is very delicate, and I don't expect it
+to see much use, though early drafts of this work have inspired the creation
 of at least one library \cite{bluss-indexing}. Regardless, it demonstrates the power of
 the ownership system.
 
@@ -435,7 +439,7 @@ provides constraints:
 \begin{minted}{rust}
 fn foo<'a, 'b>(x: &'a u8, y: &'b u8) {
     // cannot assume x has any relationship to y, since they
-    // have their own lifetimes
+    // have their own lifetimes. Therefore a \neq b
 }
 
 fn bar<'a>(x: &'a u8, y: &'a u8) {

@@ -13,7 +13,7 @@ how data will behave. This trust has many aspects:
 First, there is the \emph{property} of the data that is trusted. The simplest form of
 trust is trusting that certain values don't occur: booleans are either `true`
 or `false`, but never `FileNotFound`. This kind of property is generally quite
-manageable because it's easy to verify on demand.
+manageable because it's easy to verify on demand, or enforce with basic type-safety.
 
 The more complex property is trusting that separate pieces of data agree.
 This is the kind of property that we see in our memory-safety errors. Indices need
@@ -50,6 +50,17 @@ worry about trusting the arbitrary functions that they're given. If we were \emp
 a printing function instead of getting to call some concrete
 one, we then have to worry if that print function will uphold its promise not to mutate
 the input.
+
+Being safe in an open context is particularly important for implementing safe
+\emph{libraries}, which the implementors of a language and standard
+library must concern themselves with. It's possible to solve this problem by
+giving parts of a standard library a privileged position, effectively being
+``magic'' and inexpressible by other consumers of the language.
+Core data structures being inexpressible are fairly common, such as the
+growable array types in JavaScript and Go.
+The downside to this strategy is that users of the language are unable to build
+new libraries with these privileges, limiting the language's ecosystem. As such,
+it's desirable to minimize magic wherever possible.
 
 
 
@@ -107,7 +118,9 @@ assumption that they will be used correctly. This empowers users to efficiently
 and reliably perform operations that may never have been envisioned by the
 original implementor, or were simply deemed too much work to develop and maintain.
 Control is absolutely the greatest strength of naive interfaces. They empower
-excellent programmers to produce excellent code where it matters.
+excellent programmers to produce excellent code where it matters. As such,
+exposing a naive interface may be one way to minimize the extent to which a
+standard component is magically privileged.
 
 For similar reasons, naive interfaces are also, in principle, ergonomic to work
 with. In particular one is allowed to try to use the interface in whatever

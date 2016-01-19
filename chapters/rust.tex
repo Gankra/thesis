@@ -2,20 +2,30 @@
 \label{ch:rust}
 
 Rust is intended to be a practical language. Its developers understand that each perspective has
-advantages and drawbacks, and so they try to pick the best tool for each job, rather than
-dogmatically taking a stance that everything should be solved in one way. From each
-perspective, Rust adopts one key insight. From the naive perspective, we embrace
-that control is incredibly important. Rust wants to be used in all the places where
-C and C++ are used today, and being able to manually manage memory is a critical
-aspect of that. From the paranoid perspective, we embrace that completely
-eliminating errors is great. Humans are fallible and get tired, but a good compiler
-never rests and always has our back. From the suspicious perspective, we embrace
-that compromises must be made for ergonomics.
+advantages and drawbacks, and they try to pick the best tool for each job, rather than
+dogmatically taking a stance that everything should be done in one way. Naive, paranoid,
+and suspicious interfaces are all have compelling use cases.
 
-Part of Rust's solution is then simply taking our favourite solutions for
+Rust uses naive interfaces to provide low-level interfaces for users to extend
+the language and its libraries with. Very little of the standard library uses
+the kind of magic that an external library can't provide, and we are frequently
+evaluating ways to remove any remaining magic. This is necessary to compete in
+the space of C and C++, where abandoning standard libraries altogether is
+common.
+
+But these naive interfaces aren't intended to be the common case in Rust. Everyday
+usage is expected to be safe. As such, we also need to provide paranoid and
+suspicious interfaces. Everyday usage is, however, also expected to provide fairly
+low-level control and excellent performance. Garbage collection, for instance,
+should be exceptional. Certainly, nothing in the standard library expects
+garbage collection to be used. Rust therefore needs some way for efficient and
+safe low-level interfaces to be built on top of unsafe ones.
+
+Part of Rust's solution to this problem is simply using our favourite solutions for
 each specific problem: static types, runtime bounds checks, no nulls, wrapping
-arithmetic, and so on. However Rust has one very large holistic solution to
-many problems, and it's what separates it from most other languages: ownership.
+arithmetic, and so on. However these solutions are ad hoc and tailored to the simpler
+trust problems. For the hard trust problems, Rust has one very large holistic solution,
+and it's what separates it from most other languages: ownership.
 Rust's ownership model has two major aspects: controlling where and when data lives;
 and controlling where and when mutation can occur. These aspects are governed by
 three major features: affine types, regions, and privacy.
@@ -28,21 +38,23 @@ three major features: affine types, regions, and privacy.
 \section{Affine Types}
 
 At a base level, Rust manages data ownership with an \emph{affine type system}. The
-literature often describes affine types as being usable \emph{at most once}, but from
-the perspective of ownership, affine typing means values are \emph{uniquely owned}.
+literature often describes affine types as being usable \emph{at most once}
+\cite{pierce2005advanced}, but from
+the perspective of ownership, affine typing means values are \emph{uniquely owned}
+(there is no semantic distinction here, only a matter of perspective).
 To C++ developers, affine typing can be understood as a stricter version of
 \emph{move semantics}.
 
-If a variable stores a collection, passing it to a function by-value or
-assigning it to another variable transfers ownership of the value to the new
+If a variable stores a collection, passing it to a function by-value, or
+assigning it to another variable, transfers ownership of the value to the new
 location. The new location gains access to the value, and the old location loses
 access. Whoever owns the value knows that it's the only location
 in existence that can possibly talk about the contents of the collection.
-This allows the owner of the collection to soundly \emph{trust} the
-collection. Any properties it observes and wishes to rely on will not be changed
+This allows the owner of the collection to soundly trust the
+collection; any properties it observes and wishes to rely on will not be changed
 by some other piece of code without its permission. Perhaps more importantly,
 the owner of the collection knows that it can do whatever it pleases with the
-collection without interfering with anyone else.
+collection without interfering with anyone else -- no one else is trusting it.
 
 A simple example:
 
@@ -259,7 +271,8 @@ you close a file in a garbage collected language, there is nothing to prevent
 old users of the file from continuing to work with it. One must guard for
 this at runtime. In Rust, this is simply not a concern:
 it's statically impossible. Closing the file destroys it, and that means all
-pointers must be gone. The problem of use-afters is once again solved.
+pointers must be gone. At least in simple cases like this, we've enabled
+pointers to be used without having to worry about a use-after.
 
 Unfortunately, this doesn't solve problems like iterator invalidation. When an
 iterator is invalidated, the collection it was pointing to wasn't \emph{destroyed},
@@ -295,7 +308,7 @@ threading borrows, it includes two different \emph{kinds} of pointer:
 {rust}{&mut} and \mintinline{rust}{&} respectively. Shared references are
 exactly as we described: they can be
 freely aliased, but only allow you to read the data they point to. On the other
-hand, mutable must be unique, but enable mutation of the data
+hand, mutable references must be unique, but enable mutation of the data
 they point to. This means that taking a mutable reference to some data is like moving
 it, but then having the compiler automatically insert all the boiler-plate
 to move it back into place when the mutable reference is gone (the
@@ -369,7 +382,7 @@ has lead some to conclude that mutation should be avoided as much
 as possible. Never mutating anything does indeed satisfy Rust's requirement
 that sharing and mutating be exclusive, but in a vacuous way (mutating never
 occurs). Rust takes a more permissive stance: mutate all you want as long
-as you're not sharing. The Rust developers believe that this eliminates
+as you're not sharing. The Rust developers have found that this eliminates
 most of the problems that mutation causes in practice.
 
 In particular, this statically eliminates iterator invalidation. For
@@ -495,8 +508,11 @@ The most fundamental of these is quite
 simple: talking to C. C is the lingua-franca of the programming world. All
 major operating systems and many major libraries primarily expose a C interface.
 Any language that wants to integrate with these systems must therefore learn
-how to talk to C. Because C is \emph{definitely} unsafe and can do just about anything
-to your program, these languages then become transitively unsafe.
+how to interface with C. Because C is \emph{definitely} unsafe and can do just
+about anything to a program, these languages then become transitively unsafe.
+For instance a C library could pass an otherwise safe language a dangling
+pointer, and there's no way for the safe language to defend against this.
+See for instance, Python's ctypes module and Java's JNI framework.
 
 Rust is no different, but it embraces this reality a little more than most
 other languages. Rust is actually \emph{two} languages: Safe Rust, and Unsafe Rust.

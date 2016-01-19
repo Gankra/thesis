@@ -48,28 +48,32 @@ comes at a significant ergonomic cost. Compare these equivalent Rust and
 Java programs, which just make a cycle of two nodes:
 
 \begin{minted}{rust}
+// A reference counted pointer
 use std::rc::Rc;
+// Provides thread-unsafe interior mutability
 use std::cell::RefCell;
 
 // Magical annotation to get a Node::default constructor
 #[derive(Default)]
 struct Node {
     data: u32,
+    // A nullable reference-counted pointer
+    // to an interior-mutable node
     next: Option<Rc<RefCell<Node>>>,
-    prev: Option<Rc<RefCell<Node>>>,
 }
 
 fn main() {
+    // Create a ref-counted pointer to a node
     let a = Rc::new(RefCell::new(Node::default()));
 
+    // Create a new node that points the previous one
     let b = Rc::new(RefCell::new(Node {
         data: 1,
         next: Some(a.clone()),
-        prev: Some(a.clone()),
     }));
 
+    // And complete the loop
     a.borrow_mut().next = Some(b.clone());
-    a.borrow_mut().prev = Some(b.clone());
 }
 \end{minted}
 
@@ -79,18 +83,18 @@ class Main {
         class Node {
             int data;
             Node next;
-            Node prev;
         }
 
+        // Create a new garbage collected node
         Node a = new Node();
 
+        // Create a new node that points to the previous one
         Node b = new Node();
         b.data = 1;
         b.next = a;
-        b.prev = a;
 
+        // And complete the loop
         a.next = b;
-        a.prev = b;
     }
 }
 \end{minted}
@@ -98,7 +102,7 @@ class Main {
 The Rust program is completely bogged down in boiler-plate to properly create
 the pointers, copy them, and update the contents. This is to some extent desirable
 as Rust likes to make costs explicit, and node-based data structures are quite
-heavyweight for low level programming. Defaulting to pervasive garbage collection
+heavyweight for low-level programming. Defaulting to pervasive garbage collection
 and nullable everything ends up being quite nice for this use case.
 
 The primary workaround for this problem is to use arrays and indices instead of
@@ -110,7 +114,6 @@ efficient than a naive graph. As a rough example:
 struct Node {
     data: u32,
     next: Option<usize>,
-    prev: Option<usize>,
 }
 
 fn main() {
@@ -119,11 +122,9 @@ fn main() {
     graph.push(Node {
         data: 1,
         next: Some(0),
-        prev: Some(0),
     });
 
     graph[0].next = Some(1);
-    graph[0].prev = Some(1);
 }
 \end{minted}
 
@@ -163,7 +164,8 @@ are said to be \emph{linear}.
 A poor-man's linear-typing can be acquired with \emph{destructors}. A value's destructor
 is some code to execute when it goes out of scope. This effectively mandates that
 values with destructors be used exactly once: the owner who decides to drop the
-value on the ground is forced to invoke the value's destructor.
+value on the ground is forced to invoke the value's destructor. One can also enforce
+a suspcious version of linear typing by making the destructor simply crash the program.
 
 The most obvious limitation to this approach is that since destructors are implicitly invoked,
 they cannot take any additional context. For instance, it may be desirable
@@ -226,7 +228,8 @@ removals are happening, and we don't want this to be observable by the client.
 One solution to this problem is to require the caller to pass in a
 target buffer for all the elements that will be removed. Then `drain` can
 just run to completion without ever yielding control to the client. Unfortunately,
-this is quite inflexible.
+this is quite inflexible. For instance, one may want to simply destroy all the
+values in the array, which shouldn't require allocating a destination for them.
 
 To get more control we once again created an external interface, implementing
 `drain` as an iterator. Elements are removed one at a time, allowing the user to
@@ -256,7 +259,9 @@ assert_eq!(arr, vec![0, 3, 4]);
 \end{minted}
 
 Unfortunately, the soundness of this design relies on the user of our interface
-allowing the destructor to run. No reasonable code would ever \emph{not} run the
+allowing the destructor to run. We've already seen that Rust considers it safe
+to construct reference-counted cycles which leak destructors, so this interface
+isn't sound. Granted, no reasonable code would ever \emph{not} run the
 destructor, but since one can violate memory safety by accessing these empty
 indices, we cannot tolerate the possibility.
 
@@ -293,10 +298,13 @@ cleanup code runs. We can just have that code at the end of the function.
 
 \section{Scoped Threads}
 
-With that said, we finally have all the tools to understand the interface we
-demonstrated at the start of this thesis. Scoped threads allow data to be borrowed
-by another thread, and even mutated. As we discussed previously, this is quite
-dangerous, because borrows don't understand concurrency. So how does this work?
+Scoped threads allow data to be borrowed by another thread, and even mutated,
+without any additional synchronization. As we discussed previously, this is quite
+dangerous, particularly because borrows don't understand concurrency. Understanding
+why this interface is sound, and why similar interfaces would be *unsound* requires
+an understanding of ownership and its limitations. Now that we've seen exactly those
+things, we can do just that.
+
 The initial scoped thread interface was designed to work as follows:
 
 \begin{minted}{rust}
@@ -313,7 +321,10 @@ fn main() {
 
         // Get pointers to each element in the array
         for x in &mut array {
-            // Spawn a thread to increment this element
+            // Spawn a thread, and have it invoke the
+            // given closure (increment the element).
+            // This will mutate each element in a
+            // non-atomic, unsynchronized way!
             let guard = thread::scoped(move || {
                 *x += 1;
             });
@@ -329,11 +340,11 @@ fn main() {
 }
 \end{minted}
 
-The interesting piece of this API was the guards that were returned
-by the scoped function. Each guard claimed to store the closure the
-scoped function was passed. This in effect made them borrow all of the
+The most interesting piece of this API was the guard that's returned
+by the thread::scoped function. Each guard claimed to store the closure the
+function was passed. This in effect made them borrow all of the
 data that the closure could access. So as long as the guard existed, nothing
-could interfere with data that the spawned threads were accessing. No magic
+could access or invalidate the data that the spawned threads were accessing. No magic
 here, just the borrow checker doing its job.
 
 However the borrows expire when the guard goes away, so the guard needs to
@@ -360,14 +371,22 @@ extern crate crossbeam;
 fn main() {
     let mut array = [1, 2, 3];
 
-    // scope is essentially an `&mut Vec<Guard>`
+    // crossbeam::scope immediately executes the given
+    // closure. However it creates a Vec and passes in
+    // (basically) an `&mut Vec<Guard>` as the `scope`
+    // argument.
     crossbeam::scope(|scope| {
         for x in &mut array {
-            // scope.spawn is essentially guards.push(guard)
+            // scope.spawn is essentially thread::spawn
+            // and guards.push(guard) combined.
             scope.spawn(move || {
                 *x += 1;
             });
         }
+        // When the closure ends, the `Vec<Guard>` is
+        // reliably destroyed. Since the Guards were
+        // never given to the user, we know they will
+        // be reliably destroyed.
     });
 
     println!("{:?}", array);
