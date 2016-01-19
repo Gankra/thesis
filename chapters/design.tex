@@ -439,7 +439,7 @@ provides constraints:
 \begin{minted}{rust}
 fn foo<'a, 'b>(x: &'a u8, y: &'b u8) {
     // cannot assume x has any relationship to y, since they
-    // have their own lifetimes. Therefore a \neq b
+    // have their own lifetimes. Therefore a != b.
 }
 
 fn bar<'a>(x: &'a u8, y: &'a u8) {
