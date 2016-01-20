@@ -122,12 +122,12 @@ dereference pointers as necessary.
 \begin{minted}{rust}
 let x: i32  = 0;      // x is an i32
 let y: &i32 = &x;     // y is a reference to an i32
-let z: i32  = *x;     // z is an i32 (copied from x)
+let z: i32  = *y;     // z is an i32 (copied from x)
 
 struct Foo { data: i32 }
 let x: Foo = Foo { data: 0 };
 let y: &Foo = &x;
-let x: i32 = y.data;  // automatic dereferencing with `.`
+let z: i32 = y.data;  // automatic dereferencing with `.`
 
 \end{minted}
 
