@@ -200,7 +200,7 @@ instance, one may wish to downgrade a pointer that would normally free its alloc
 to a raw pointer, perhaps to pass to a C API.
 
 There are various solutions to this problem, but most languages that include
-destructors (C++ C\#, Java, D, ...) generally accept that sometimes
+destructors (C++, C\#, Java, D, ...) generally accept that sometimes
 they won't run. They're convenient and generally
 reliable, but if one \emph{really} needs something to happen, they can't always be
 relied on. Rust also takes this stance. In particular, one can't pass a value with
